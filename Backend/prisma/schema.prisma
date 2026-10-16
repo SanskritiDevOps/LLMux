@@ -1,0 +1,73 @@
+// LLMux database schema. See README section 17 (Database Design).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  apiKeys ApiKey[]
+
+  @@map("users")
+}
+
+model ApiKey {
+  id                    String    @id @default(uuid()) @db.Uuid
+  userId                String    @map("user_id") @db.Uuid
+  name                  String
+  keyPrefix             String    @map("key_prefix")
+  keyHash               String    @unique @map("key_hash")
+  rateLimitPerMin       Int?      @map("rate_limit_per_min")
+  monthlyBudgetMicroUsd BigInt?   @map("monthly_budget_micro_usd")
+  lastUsedAt            DateTime? @map("last_used_at")
+  revokedAt             DateTime? @map("revoked_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usageLogs UsageLog[]
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+model UsageLog {
+  id                 String   @id @default(uuid()) @db.Uuid
+  requestId          String   @unique @map("request_id")
+  apiKeyId           String   @map("api_key_id") @db.Uuid
+  modelAlias         String   @map("model_alias")
+  provider           String?
+  providerModel      String?  @map("provider_model")
+  inputTokens        Int      @default(0) @map("input_tokens")
+  outputTokens       Int      @default(0) @map("output_tokens")
+  usageEstimated     Boolean  @default(false) @map("usage_estimated")
+  costMicroUsd       BigInt   @default(0) @map("cost_micro_usd")
+  savedMicroUsd      BigInt   @default(0) @map("saved_micro_usd")
+  latencyMs          Int      @map("latency_ms")
+  timeToFirstTokenMs Int?     @map("time_to_first_token_ms")
+  status             String
+  errorCode          String?  @map("error_code")
+  cached             Boolean  @default(false)
+  fallbackUsed       Boolean  @default(false) @map("fallback_used")
+  attempts           Int      @default(1)
+  streamed           Boolean  @default(false)
+  transport          String
+  metadata           Json?
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  apiKey ApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([apiKeyId, createdAt])
+  @@index([provider, createdAt])
+  @@index([modelAlias, createdAt])
+  @@index([createdAt])
+  @@map("usage_logs")
+}
