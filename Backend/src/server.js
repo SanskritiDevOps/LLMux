@@ -8,6 +8,8 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 let env, createApp, logger, prisma, redis;
 try {
   ({ env } = await import("./config/env.js"));
+  // Validates aliases, fallback chains and prices; a typo there stops startup here.
+  await import("./config/models.js");
   ({ logger } = await import("./utils/logger.js"));
   ({ prisma } = await import("./config/db.js"));
   ({ redis } = await import("./config/redis.js"));
