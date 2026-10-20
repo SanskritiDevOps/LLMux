@@ -1,0 +1,9 @@
+{
+  "candidates": [
+    {
+      "content": { "role": "model", "parts": [{ "text": "Morning: Amber Fort, then" }] },
+      "finishReason": "MAX_TOKENS"
+    }
+  ],
+  "usageMetadata": { "promptTokenCount": 42, "candidatesTokenCount": 8, "totalTokenCount": 50 }
+}

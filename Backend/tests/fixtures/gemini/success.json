@@ -1,0 +1,19 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [{ "text": "Morning: Amber Fort. " }, { "text": "Afternoon: City Palace." }]
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 42,
+    "candidatesTokenCount": 310,
+    "totalTokenCount": 352
+  },
+  "modelVersion": "gemini-3.5-flash-lite",
+  "responseId": "fixture-success"
+}
