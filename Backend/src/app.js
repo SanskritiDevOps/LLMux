@@ -4,10 +4,12 @@ import helmet from "helmet";
 import { checkDatabase } from "./config/db.js";
 import { env } from "./config/env.js";
 import { checkRedis } from "./config/redis.js";
+import { createGateway } from "./gateway/gateway.service.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import { httpLogger } from "./middleware/httpLogger.js";
 import { requestId } from "./middleware/requestId.js";
 import { systemRoutes } from "./routes/system.routes.js";
+import { v1Routes } from "./routes/v1.routes.js";
 import { logger as defaultLogger } from "./utils/logger.js";
 
 const defaultChecks = { database: checkDatabase, redis: checkRedis };
@@ -20,12 +22,15 @@ const defaultChecks = { database: checkDatabase, redis: checkRedis };
  * @param {import("pino").Logger} [deps.logger] tests pass a logger that writes to memory
  * @param {Record<string, () => Promise<void>>} [deps.readinessChecks] tests pass fakes
  *   so /ready can be tested without real Postgres or Redis
+ * @param {ReturnType<typeof createGateway>} [deps.gateway] tests pass a fake or a gateway
+ *   pointed at the mock provider
  * @param {(app: import("express").Express) => void} [deps.extraRoutes] tests register
  *   throwaway routes here so they sit before the 404 and error handlers
  */
 export function createApp({
   logger = defaultLogger,
   readinessChecks = defaultChecks,
+  gateway = createGateway(),
   extraRoutes,
 } = {}) {
   const app = express();
@@ -40,6 +45,7 @@ export function createApp({
   app.use(express.json({ limit: env.MAX_BODY_SIZE }));
 
   app.use(systemRoutes(readinessChecks));
+  app.use("/v1", v1Routes({ gateway }));
 
   extraRoutes?.(app);
 
