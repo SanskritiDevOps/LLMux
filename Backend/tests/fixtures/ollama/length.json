@@ -1,0 +1,14 @@
+{
+  "model": "llama3.2:1b",
+  "created_at": "2026-10-21T06:43:32.7346212Z",
+  "message": { "role": "assistant", "content": "Jaipur, also known" },
+  "done": true,
+  "done_reason": "length",
+  "total_duration": 353803700,
+  "load_duration": 23550200,
+  "prompt_eval_count": 31,
+  "prompt_eval_cached_count": 15,
+  "prompt_eval_duration": 189960000,
+  "eval_count": 5,
+  "eval_duration": 127426000
+}

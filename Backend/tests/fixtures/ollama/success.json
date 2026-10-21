@@ -1,0 +1,14 @@
+{
+  "model": "llama3.2:1b",
+  "created_at": "2026-10-21T06:43:32.0102548Z",
+  "message": { "role": "assistant", "content": "The Amber Fort is a famous fort in Jaipur." },
+  "done": true,
+  "done_reason": "stop",
+  "total_duration": 4032087300,
+  "load_duration": 3294127300,
+  "prompt_eval_count": 39,
+  "prompt_eval_cached_count": 0,
+  "prompt_eval_duration": 337109000,
+  "eval_count": 12,
+  "eval_duration": 361470000
+}

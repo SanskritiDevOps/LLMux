@@ -86,7 +86,7 @@ describe("Gemini adapter end to end against a fake Gemini", () => {
 describe("provider registry", () => {
   it("has the Gemini adapter registered", () => {
     expect(providerRegistry.get("gemini")).toBe(geminiAdapter);
-    expect(providerRegistry.names()).toEqual(["gemini"]);
+    expect(providerRegistry.names()).toContain("gemini");
   });
 
   it("is a frozen, complete adapter", () => {
