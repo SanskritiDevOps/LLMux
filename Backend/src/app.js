@@ -8,6 +8,8 @@ import { createGateway } from "./gateway/gateway.service.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import { httpLogger } from "./middleware/httpLogger.js";
 import { requestId } from "./middleware/requestId.js";
+import { authRoutes } from "./modules/auth/auth.routes.js";
+import { createUsersRepository } from "./modules/auth/users.repository.js";
 import { systemRoutes } from "./routes/system.routes.js";
 import { v1Routes } from "./routes/v1.routes.js";
 import { logger as defaultLogger } from "./utils/logger.js";
@@ -24,6 +26,8 @@ const defaultChecks = { database: checkDatabase, redis: checkRedis };
  *   so /ready can be tested without real Postgres or Redis
  * @param {ReturnType<typeof createGateway>} [deps.gateway] tests pass a fake or a gateway
  *   pointed at the mock provider
+ * @param {ReturnType<typeof createUsersRepository>} [deps.users] tests pass an in-memory
+ *   repository; the default uses Postgres
  * @param {(app: import("express").Express) => void} [deps.extraRoutes] tests register
  *   throwaway routes here so they sit before the 404 and error handlers
  */
@@ -31,6 +35,7 @@ export function createApp({
   logger = defaultLogger,
   readinessChecks = defaultChecks,
   gateway = createGateway(),
+  users = createUsersRepository(),
   extraRoutes,
 } = {}) {
   const app = express();
@@ -40,12 +45,14 @@ export function createApp({
   app.use(httpLogger(logger));
 
   app.use(helmet());
-  // Only the dashboard is allowed to call the API from a browser.
-  app.use(cors({ origin: env.DASHBOARD_URL }));
+  // Only the dashboard is allowed to call the API from a browser, and it may send its
+  // session cookie (credentials). Credentials require an exact origin, never "*".
+  app.use(cors({ origin: env.DASHBOARD_URL, credentials: true }));
   app.use(express.json({ limit: env.MAX_BODY_SIZE }));
 
   app.use(systemRoutes(readinessChecks));
   app.use("/v1", v1Routes({ gateway }));
+  app.use("/api/auth", authRoutes({ users }));
 
   extraRoutes?.(app);
 
