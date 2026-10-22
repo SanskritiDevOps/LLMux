@@ -9,6 +9,7 @@ export const ERROR_CODES = Object.freeze({
   UNAUTHORIZED: { status: 401, retryable: false },
   KEY_REVOKED: { status: 401, retryable: false },
   BUDGET_EXCEEDED: { status: 402, retryable: false },
+  FORBIDDEN: { status: 403, retryable: false },
   NOT_FOUND: { status: 404, retryable: false },
   PAYLOAD_TOO_LARGE: { status: 413, retryable: false },
   RATE_LIMITED: { status: 429, retryable: true },

@@ -62,6 +62,7 @@ describe("GatewayError", () => {
       UNAUTHORIZED: 401,
       KEY_REVOKED: 401,
       BUDGET_EXCEEDED: 402,
+      FORBIDDEN: 403,
       NOT_FOUND: 404,
       PAYLOAD_TOO_LARGE: 413,
       RATE_LIMITED: 429,
