@@ -16,8 +16,23 @@ jobs:
       redis:
         image: redis:7
         ports: ["6379:6379"]
+      # Tests use the llmux_test database; the global setup applies migrations to it.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: llmux
+          POSTGRES_PASSWORD: llmux
+          POSTGRES_DB: llmux_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U llmux"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       REDIS_URL: redis://localhost:6379
+      # Runs the tests that need real Postgres and Redis (skipped by default locally).
+      TEST_REAL_DEPS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
