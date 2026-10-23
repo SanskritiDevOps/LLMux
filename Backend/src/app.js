@@ -3,13 +3,15 @@ import express from "express";
 import helmet from "helmet";
 import { checkDatabase } from "./config/db.js";
 import { env } from "./config/env.js";
-import { checkRedis } from "./config/redis.js";
+import { checkRedis, redis as defaultRedis } from "./config/redis.js";
 import { createGateway } from "./gateway/gateway.service.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import { httpLogger } from "./middleware/httpLogger.js";
 import { requestId } from "./middleware/requestId.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
 import { createUsersRepository } from "./modules/auth/users.repository.js";
+import { createKeysRepository } from "./modules/keys/keys.repository.js";
+import { keysRoutes } from "./modules/keys/keys.routes.js";
 import { systemRoutes } from "./routes/system.routes.js";
 import { v1Routes } from "./routes/v1.routes.js";
 import { logger as defaultLogger } from "./utils/logger.js";
@@ -28,6 +30,10 @@ const defaultChecks = { database: checkDatabase, redis: checkRedis };
  *   pointed at the mock provider
  * @param {ReturnType<typeof createUsersRepository>} [deps.users] tests pass an in-memory
  *   repository; the default uses Postgres
+ * @param {ReturnType<typeof createKeysRepository>} [deps.keys] gateway keys; tests pass an
+ *   in-memory repository
+ * @param {import("ioredis").Redis} [deps.redis] used for cached key lookups; tests pass an
+ *   in-memory stand-in
  * @param {(app: import("express").Express) => void} [deps.extraRoutes] tests register
  *   throwaway routes here so they sit before the 404 and error handlers
  */
@@ -36,6 +42,8 @@ export function createApp({
   readinessChecks = defaultChecks,
   gateway = createGateway(),
   users = createUsersRepository(),
+  keys = createKeysRepository(),
+  redis = defaultRedis,
   extraRoutes,
 } = {}) {
   const app = express();
@@ -51,8 +59,10 @@ export function createApp({
   app.use(express.json({ limit: env.MAX_BODY_SIZE }));
 
   app.use(systemRoutes(readinessChecks));
-  app.use("/v1", v1Routes({ gateway }));
+  // keys and redis are what /v1 uses to check gateway keys.
+  app.use("/v1", v1Routes({ gateway, keys, redis }));
   app.use("/api/auth", authRoutes({ users }));
+  app.use("/api/keys", keysRoutes({ users, keys, redis }));
 
   extraRoutes?.(app);
 
