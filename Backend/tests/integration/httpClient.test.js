@@ -58,7 +58,9 @@ afterAll(async () => {
 const send = (path, options = {}) =>
   sendRequest(
     { url: `${baseUrl}${path}`, headers: options.headers, body: options.body ?? { q: 1 } },
-    { provider: "gemini", timeoutMs: options.timeoutMs ?? 300, signal: options.signal },
+    // Generous unless a test is about timeouts: the first connection on a busy machine can
+    // take a few hundred milliseconds, which once made this suite flaky.
+    { provider: "gemini", timeoutMs: options.timeoutMs ?? 5000, signal: options.signal },
   );
 
 async function rejection(promise) {

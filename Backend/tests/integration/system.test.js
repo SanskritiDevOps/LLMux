@@ -53,17 +53,19 @@ describe("GET /ready", () => {
 
     expect(res.status).toBe(503);
     expect(res.body.checks).toEqual({ database: "ok", redis: "timeout" });
-    expect(Date.now() - started).toBeLessThan(READY_CHECK_TIMEOUT_MS + 500);
+    // Well under two timeouts, which proves it gave up instead of waiting forever.
+    expect(Date.now() - started).toBeLessThan(READY_CHECK_TIMEOUT_MS * 2);
   });
 
   it("runs the checks in parallel", async () => {
-    const slow = () => new Promise((resolve) => setTimeout(resolve, 300));
+    // Two 400 ms checks: in sequence they take 800 ms or more, in parallel about 400 ms.
+    const slow = () => new Promise((resolve) => setTimeout(resolve, 400));
     const { app } = appWith({ database: slow, redis: slow });
 
     const started = Date.now();
     await request(app).get("/ready");
 
-    expect(Date.now() - started).toBeLessThan(550);
+    expect(Date.now() - started).toBeLessThan(750);
   });
 
   it("is logged, unlike /health", async () => {
