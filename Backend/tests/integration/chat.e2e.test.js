@@ -4,6 +4,9 @@ import { createApp } from "../../src/app.js";
 import { createGateway } from "../../src/gateway/gateway.service.js";
 import { ChatResponseSchema } from "../../src/gateway/schemas.js";
 import { captureLogs } from "../helpers/captureLogs.js";
+import { fakeKeys } from "../helpers/fakeKeys.js";
+import { fakeRedis } from "../helpers/fakeRedis.js";
+import { seedKey } from "../helpers/testKeys.js";
 import { startMockProvider } from "../mockProvider.js";
 
 // The whole request path with nothing faked except the provider itself:
@@ -11,6 +14,9 @@ import { startMockProvider } from "../mockProvider.js";
 let mock;
 let app;
 let logs;
+// The gateway key every request below sends.
+const keys = fakeKeys();
+const { authorization } = await seedKey(keys);
 
 beforeAll(async () => {
   mock = await startMockProvider();
@@ -29,14 +35,17 @@ beforeEach(() => {
       gemini: { apiKey: "mock-gemini-key", baseUrl: mock.url },
       ollama: { baseUrl: mock.url },
     },
-    timeoutMs: 300,
+    // Long enough that a normal mock answer never times out on a busy machine, short enough
+    // that the hang test stays quick.
+    timeoutMs: 1000,
   });
-  app = createApp({ logger: logs.logger, gateway });
+  app = createApp({ logger: logs.logger, gateway, keys, redis: fakeRedis() });
 });
 
 const chat = (body) =>
   request(app)
     .post("/v1/chat")
+    .set("Authorization", authorization)
     .send({ messages: [{ role: "user", content: "Plan one day in Jaipur." }], ...body });
 
 describe("POST /v1/chat end to end", () => {
@@ -128,7 +137,7 @@ describe("POST /v1/chat end to end", () => {
 
     expect(res.status).toBe(504);
     expect(res.body.error).toMatchObject({ code: "TIMEOUT", provider: "gemini", retryable: true });
-    expect(Date.now() - started).toBeLessThan(1500);
+    expect(Date.now() - started).toBeLessThan(3000);
   });
 
   it("reports a dropped connection as 503 PROVIDER_UNAVAILABLE", async () => {

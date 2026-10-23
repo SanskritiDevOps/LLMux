@@ -1,19 +1,33 @@
 import { Router } from "express";
 import { listModels as defaultListModels } from "../gateway/catalog.js";
 import { ChatRequestSchema } from "../gateway/schemas.js";
+import { requireApiKey } from "../middleware/apiKeyAuth.js";
 import { validate } from "../middleware/validate.js";
+import { createKeyLookup } from "../modules/keys/keyLookup.js";
 
 /**
  * The public gateway API. Versioned in the path so /v1 never changes underneath clients.
- * Authentication with gateway keys is added on Day 6.
+ * Every route needs a gateway key (Authorization: Bearer llmux_sk_…).
  *
  * @param {{
  *   gateway: ReturnType<typeof import("../gateway/gateway.service.js").createGateway>,
  *   listModels?: typeof defaultListModels,
- * }} deps
+ *   keys?: ReturnType<typeof import("../modules/keys/keys.repository.js").createKeysRepository>,
+ *   redis?: import("ioredis").Redis,
+ *   keyLookup?: ReturnType<typeof createKeyLookup>,
+ * }} deps  keyLookup defaults to a Redis-cached lookup over `keys`
  */
-export function v1Routes({ gateway, listModels = defaultListModels }) {
+export function v1Routes({
+  gateway,
+  listModels = defaultListModels,
+  keys,
+  redis,
+  keyLookup = createKeyLookup({ keys, redis }),
+}) {
   const router = Router();
+
+  // Before everything else, so no route here can be reached without a valid key.
+  router.use(requireApiKey({ lookup: keyLookup }));
 
   router.get("/models", (_req, res) => {
     res.json(listModels());

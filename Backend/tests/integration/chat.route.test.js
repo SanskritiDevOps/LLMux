@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../../src/app.js";
 import { GatewayError } from "../../src/utils/errors.js";
 import { captureLogs } from "../helpers/captureLogs.js";
+import { fakeKeys } from "../helpers/fakeKeys.js";
+import { fakeRedis } from "../helpers/fakeRedis.js";
+import { seedKey } from "../helpers/testKeys.js";
 
 // The route only validates, hands off to the gateway and writes JSON, so a fake gateway
 // is enough here. The full path through real adapters is tested with the mock provider.
@@ -20,10 +23,15 @@ const answer = {
   fallbackUsed: false,
 };
 
+// /v1 needs a gateway key; every request below sends this one.
+const keys = fakeKeys();
+const { authorization } = await seedKey(keys);
+
 function appWith(chat) {
   const logs = captureLogs();
   const gateway = { chat: vi.fn(chat) };
-  return { app: createApp({ logger: logs.logger, gateway }), gateway, logs };
+  const app = createApp({ logger: logs.logger, gateway, keys, redis: fakeRedis() });
+  return { app, gateway, logs };
 }
 
 const body = { model: "fast", messages: [{ role: "user", content: "Hi" }] };
@@ -32,7 +40,7 @@ describe("POST /v1/chat", () => {
   it("returns the gateway's unified response as JSON", async () => {
     const { app } = appWith(async () => ({ response: answer, meta: {} }));
 
-    const res = await request(app).post("/v1/chat").send(body);
+    const res = await request(app).post("/v1/chat").set("Authorization", authorization).send(body);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(answer);
@@ -41,7 +49,7 @@ describe("POST /v1/chat", () => {
   it("passes the validated request (with defaults) and the request ID to the gateway", async () => {
     const { app, gateway } = appWith(async () => ({ response: answer, meta: {} }));
 
-    const res = await request(app).post("/v1/chat").send(body);
+    const res = await request(app).post("/v1/chat").set("Authorization", authorization).send(body);
 
     const [validated, context] = gateway.chat.mock.calls[0];
     expect(validated).toEqual({ ...body, temperature: 0.7, stream: false, cache: true });
@@ -53,7 +61,10 @@ describe("POST /v1/chat", () => {
   it("rejects an invalid body before the gateway is called", async () => {
     const { app, gateway } = appWith(async () => ({ response: answer, meta: {} }));
 
-    const res = await request(app).post("/v1/chat").send({ model: "fast", max_tokens: 10 });
+    const res = await request(app)
+      .post("/v1/chat")
+      .set("Authorization", authorization)
+      .send({ model: "fast", max_tokens: 10 });
 
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe("INVALID_REQUEST");
@@ -67,7 +78,7 @@ describe("POST /v1/chat", () => {
       });
     });
 
-    const res = await request(app).post("/v1/chat").send(body);
+    const res = await request(app).post("/v1/chat").set("Authorization", authorization).send(body);
 
     expect(res.status).toBe(503);
     expect(res.body.error).toMatchObject({
@@ -96,6 +107,7 @@ describe("POST /v1/chat", () => {
     // Give up on the request after 100 ms, which closes the connection like a closed tab.
     await request(app)
       .post("/v1/chat")
+      .set("Authorization", authorization)
       .send(body)
       .timeout(100)
       .catch(() => {});
@@ -110,7 +122,7 @@ describe("POST /v1/chat", () => {
   it("only accepts POST", async () => {
     const { app } = appWith(async () => ({ response: answer, meta: {} }));
 
-    const res = await request(app).get("/v1/chat");
+    const res = await request(app).get("/v1/chat").set("Authorization", authorization);
 
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe("NOT_FOUND");

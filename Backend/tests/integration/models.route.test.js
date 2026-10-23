@@ -5,6 +5,12 @@ import { modelConfig } from "../../src/config/models.js";
 import { listModels } from "../../src/gateway/catalog.js";
 import { errorHandler } from "../../src/middleware/errorHandler.js";
 import { v1Routes } from "../../src/routes/v1.routes.js";
+import { fakeKeys } from "../helpers/fakeKeys.js";
+import { fakeRedis } from "../helpers/fakeRedis.js";
+import { seedKey } from "../helpers/testKeys.js";
+
+const keys = fakeKeys();
+const { authorization } = await seedKey(keys);
 
 // Mounted on a bare app so the test controls which providers count as configured,
 // independent of whatever is in Backend/.env.
@@ -14,6 +20,8 @@ function appWith(enabled) {
     "/v1",
     v1Routes({
       gateway: { chat: async () => ({}) },
+      keys,
+      redis: fakeRedis(),
       listModels: () => listModels({ config: modelConfig, enabledProviders: new Set(enabled) }),
     }),
   );
@@ -23,7 +31,9 @@ function appWith(enabled) {
 
 describe("GET /v1/models", () => {
   it("lists the shipped aliases with only the configured providers", async () => {
-    const res = await request(appWith(["gemini", "ollama"])).get("/v1/models");
+    const res = await request(appWith(["gemini", "ollama"]))
+      .get("/v1/models")
+      .set("Authorization", authorization);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -51,13 +61,15 @@ describe("GET /v1/models", () => {
   });
 
   it("drops aliases whose providers are all unconfigured", async () => {
-    const res = await request(appWith(["ollama"])).get("/v1/models");
+    const res = await request(appWith(["ollama"]))
+      .get("/v1/models")
+      .set("Authorization", authorization);
 
     expect(res.body.models.map((model) => model.id)).toEqual(["fast", "local"]);
   });
 
   it("returns an empty list rather than an error when nothing is configured", async () => {
-    const res = await request(appWith([])).get("/v1/models");
+    const res = await request(appWith([])).get("/v1/models").set("Authorization", authorization);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ models: [] });
