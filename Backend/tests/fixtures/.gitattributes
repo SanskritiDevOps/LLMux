@@ -1,0 +1,4 @@
+# Recorded provider streams must stay byte-for-byte as the provider sent them: their line
+# endings (\r\n in Gemini's SSE) are part of what the stream reader is tested against.
+*.sse -text
+*.ndjson -text

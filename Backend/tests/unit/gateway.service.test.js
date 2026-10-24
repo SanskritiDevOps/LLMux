@@ -198,12 +198,12 @@ describe("gateway.chat", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
-  it("rejects streaming requests until streaming is built", async () => {
+  it("refuses stream: true, which belongs to gateway.stream()", async () => {
     const { chat, send } = setup({ reply: ok({}) });
 
-    await expect(chat({ model: "fast", stream: true })).rejects.toMatchObject({
-      code: "INVALID_REQUEST",
-    });
+    await expect(chat({ model: "fast", stream: true })).rejects.toThrow(
+      "gateway.chat() does not stream; use gateway.stream()",
+    );
     expect(send).not.toHaveBeenCalled();
   });
 });

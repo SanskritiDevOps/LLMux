@@ -10,8 +10,9 @@ import { errorFromStatus } from "../adapter.js";
 
 const PROVIDER = "gemini";
 
-// Only the fields LLMux reads; everything else Gemini sends is ignored.
-const GeminiResponseSchema = z.object({
+// Only the fields LLMux reads; everything else Gemini sends is ignored. Each streamed
+// chunk has the same shape, so stream.js uses it too.
+export const GeminiResponseSchema = z.object({
   candidates: z
     .array(
       z.object({
@@ -37,7 +38,7 @@ const GeminiResponseSchema = z.object({
 });
 
 // Gemini's FinishReason enum → the four unified reasons. Anything unlisted becomes "error".
-const FINISH_REASONS = {
+export const FINISH_REASONS = {
   STOP: "stop",
   MAX_TOKENS: "length",
   // Hit the per-request token limit with more to come: from the client's view, truncated.
@@ -53,7 +54,7 @@ const FINISH_REASONS = {
   ESCALATION: "content_filter",
 };
 
-function unreadable(cause) {
+export function unreadable(cause) {
   return new GatewayError(
     "PROVIDER_ERROR",
     `${PROVIDER} returned a response LLMux could not read`,
@@ -74,13 +75,7 @@ export function parseGeminiResponse(json) {
     throw unreadable(result.error);
   }
   const { candidates, promptFeedback, usageMetadata } = result.data;
-
-  // Thinking tokens are billed as output (Gemini pricing: "output price, including
-  // thinking tokens"), so they count towards outputTokens for cost tracking.
-  const inputTokens = usageMetadata?.promptTokenCount ?? 0;
-  const outputTokens =
-    (usageMetadata?.candidatesTokenCount ?? 0) + (usageMetadata?.thoughtsTokenCount ?? 0);
-  const usage = { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens };
+  const usage = toUsage(usageMetadata);
   const usageEstimated = usageMetadata === undefined;
 
   const candidate = candidates?.[0];
@@ -92,15 +87,29 @@ export function parseGeminiResponse(json) {
     throw unreadable(new Error("Response has no candidates and no blockReason"));
   }
 
-  // Parts flagged `thought` are the model's reasoning, not the answer.
-  const content = (candidate.content?.parts ?? [])
-    .filter((part) => !part.thought && typeof part.text === "string")
-    .map((part) => part.text)
-    .join("");
-
+  const content = answerText(candidate);
   const finishReason = FINISH_REASONS[candidate.finishReason ?? "STOP"] ?? "error";
 
   return { content, finishReason, usage, usageEstimated };
+}
+
+/**
+ * Thinking tokens are billed as output (Gemini pricing: "output price, including
+ * thinking tokens"), so they count towards outputTokens for cost tracking.
+ */
+export function toUsage(usageMetadata) {
+  const inputTokens = usageMetadata?.promptTokenCount ?? 0;
+  const outputTokens =
+    (usageMetadata?.candidatesTokenCount ?? 0) + (usageMetadata?.thoughtsTokenCount ?? 0);
+  return { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens };
+}
+
+/** Parts flagged `thought` are the model's reasoning, not the answer. */
+export function answerText(candidate) {
+  return (candidate.content?.parts ?? [])
+    .filter((part) => !part.thought && typeof part.text === "string")
+    .map((part) => part.text)
+    .join("");
 }
 
 /**

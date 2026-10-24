@@ -1,0 +1,4 @@
+data: {"candidates": [{"content": {"parts": [{"text": "The user wants one fort.","thought": true}],"role": "model"},"index": 0}],"usageMetadata": {"promptTokenCount": 10,"thoughtsTokenCount": 6,"totalTokenCount": 16},"modelVersion": "gemini-3.5-flash"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "Amber Fort."}],"role": "model"},"finishReason": "STOP","index": 0}],"usageMetadata": {"promptTokenCount": 10,"candidatesTokenCount": 3,"thoughtsTokenCount": 6,"totalTokenCount": 19},"modelVersion": "gemini-3.5-flash"}
+

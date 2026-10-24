@@ -177,11 +177,4 @@ describe("POST /v1/chat end to end", () => {
     expect(res.body.error.code).toBe("INVALID_REQUEST");
     expect(mock.requests).toHaveLength(0);
   });
-
-  it("rejects stream: true until streaming is built", async () => {
-    const res = await chat({ model: "fast", stream: true });
-
-    expect(res.status).toBe(400);
-    expect(res.body.error.message).toContain("Streaming is not supported yet");
-  });
 });

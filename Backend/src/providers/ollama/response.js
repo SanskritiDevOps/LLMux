@@ -17,7 +17,7 @@ const OllamaResponseSchema = z.object({
   eval_count: z.int().nonnegative().optional(),
 });
 
-const FINISH_REASONS = { stop: "stop", length: "length" };
+export const FINISH_REASONS = { stop: "stop", length: "length" };
 
 /**
  * @param {unknown} json

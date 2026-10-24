@@ -10,8 +10,21 @@ import express from "express";
  *   { type: "hang" }                 accept the request and never answer
  *   { type: "drop" }                 destroy the connection without answering
  *
- * Every request is recorded, and requests whose client went away before an answer was
- * sent are counted in `aborted`, which is how tests prove upstream calls get cancelled.
+ * Streaming requests (Gemini's :streamGenerateContent, Ollama's stream: true) get the
+ * answer in the provider's stream format (SSE or NDJSON). "ok" streams `text` word by
+ * word, and one more behavior controls the stream in detail:
+ *
+ *   { type: "stream", chunks, gapMs?, then? }  send each chunk as one event, gapMs apart
+ *     then: "finish" (default)  final event with the finish reason and usage
+ *           "error"             the provider's own mid-stream error event
+ *           "drop"              destroy the connection
+ *           "stall"             go silent and keep the connection open
+ *           "end"               close cleanly without ever finishing
+ *
+ * Every streamed event is written in two halves, so the gateway always has to join JSON
+ * split across network writes. Every request is recorded, and requests whose client went
+ * away before an answer was complete are counted in `aborted`, which is how tests prove
+ * upstream calls get cancelled.
  */
 export async function startMockProvider() {
   const behaviors = { gemini: { type: "ok" }, ollama: { type: "ok" } };
@@ -22,8 +35,11 @@ export async function startMockProvider() {
   app.use(express.json());
 
   app.use((req, res) => {
-    const gemini = req.path.match(/^\/v1beta\/models\/([^/]+):generateContent$/);
+    const gemini = req.path.match(
+      /^\/v1beta\/models\/([^/]+):(generateContent|streamGenerateContent)$/,
+    );
     const provider = gemini ? "gemini" : req.path === "/api/chat" ? "ollama" : null;
+    const streaming = gemini ? gemini[2] === "streamGenerateContent" : req.body?.stream === true;
     if (!provider) {
       res.status(404).json({ error: "mock provider: unknown path" });
       return;
@@ -46,6 +62,11 @@ export async function startMockProvider() {
     }
 
     const text = behavior.text ?? `Hello from mock ${provider}`;
+    if (streaming) {
+      const chunks = behavior.type === "stream" ? behavior.chunks : text.split(/(?<= )/);
+      streamAnswer(res, provider, req.body.model, chunks, behavior);
+      return;
+    }
     const reply = provider === "gemini" ? geminiAnswer(text) : ollamaAnswer(req.body.model, text);
     setTimeout(() => {
       if (!res.writableEnded) res.json(reply);
@@ -77,6 +98,63 @@ export async function startMockProvider() {
       await new Promise((resolve) => server.close(resolve));
     },
   };
+}
+
+const FORMATS = {
+  gemini: {
+    contentType: "text/event-stream",
+    frame: (json) => `data: ${JSON.stringify(json)}\r\n\r\n`,
+    delta: (_model, text) => ({ candidates: [{ content: { role: "model", parts: [{ text }] } }] }),
+    finish: (model, text) => ({ ...geminiAnswer(text), modelVersion: model }),
+    error: () => ({
+      error: { code: 503, message: "The model is overloaded.", status: "UNAVAILABLE" },
+    }),
+  },
+  ollama: {
+    contentType: "application/x-ndjson",
+    frame: (json) => `${JSON.stringify(json)}\n`,
+    delta: (model, text) => ({ model, message: { role: "assistant", content: text }, done: false }),
+    finish: (model) => ollamaAnswer(model, ""),
+    error: () => ({ error: "llama runner process has terminated" }),
+  },
+};
+
+function streamAnswer(res, provider, model, chunks, { gapMs = 5, then = "finish" }) {
+  const format = FORMATS[provider];
+  res.writeHead(200, { "content-type": format.contentType });
+
+  // Each event goes out as two writes, splitting its JSON in the middle.
+  const writeSplit = (frame, done) => {
+    const middle = Math.ceil(frame.length / 2);
+    res.write(frame.slice(0, middle));
+    setTimeout(() => {
+      if (res.writableEnded || res.destroyed) return;
+      res.write(frame.slice(middle));
+      done();
+    }, 1);
+  };
+
+  const next = (index) => {
+    if (res.writableEnded || res.destroyed) return;
+    if (index < chunks.length) {
+      writeSplit(format.frame(format.delta(model, chunks[index])), () =>
+        setTimeout(() => next(index + 1), gapMs),
+      );
+      return;
+    }
+    if (then === "stall") return;
+    if (then === "drop") {
+      res.socket.destroy();
+      return;
+    }
+    if (then === "end") {
+      res.end();
+      return;
+    }
+    const last = then === "error" ? format.error() : format.finish(model, "");
+    writeSplit(format.frame(last), () => res.end());
+  };
+  next(0);
 }
 
 function geminiAnswer(text) {
