@@ -1,5 +1,6 @@
 import { PROVIDERS } from "../config/models.js";
 import { GatewayError } from "../utils/errors.js";
+import { STREAM_FORMATS } from "./streamReader.js";
 
 /**
  * The contract every provider adapter implements. Adapters are pure translation code:
@@ -34,13 +35,23 @@ import { GatewayError } from "../utils/errors.js";
  * @property {number} status
  * @property {unknown} body  parsed JSON when possible, otherwise text
  *
+ * @typedef {Object} ProviderStreamEvent  what parseStreamChunk returns; the gateway turns
+ *   these into the client's start / delta / end events
+ * @property {"delta" | "usage" | "finish"} type
+ * @property {string} [text]  delta: the next piece of the answer (never empty)
+ * @property {ParsedResponse["usage"]} [usage]  usage: the latest totals (the last one wins)
+ * @property {ParsedResponse["finishReason"]} [finishReason]  finish: why the answer ended
+ *
  * @typedef {Object} ProviderAdapter
  * @property {string} name  one of PROVIDERS
  * @property {string} defaultBaseUrl
  * @property {(request: UnifiedRequest, target: Target, context: RequestContext) => ProviderRequest} buildRequest
  * @property {(json: unknown) => ParsedResponse} parseResponse
  * @property {(response: ProviderErrorResponse) => GatewayError} mapError
- * @property {(raw: string) => object[]} [parseStreamChunk]  added with streaming (Day 7)
+ * @property {"sse" | "ndjson"} [streamFormat]  how the provider frames its stream
+ * @property {(raw: string) => ProviderStreamEvent[]} [parseStreamChunk]  one complete
+ *   payload (an SSE event's data, or one NDJSON line) → events; throws a GatewayError when
+ *   the provider reports an error mid-stream
  */
 
 const REQUIRED_FUNCTIONS = ["buildRequest", "parseResponse", "mapError"];
@@ -68,6 +79,11 @@ export function defineAdapter(adapter) {
   }
   if (adapter.parseStreamChunk !== undefined && typeof adapter.parseStreamChunk !== "function") {
     throw new TypeError(`Adapter "${adapter.name}": parseStreamChunk must be a function`);
+  }
+  if (adapter.parseStreamChunk && !STREAM_FORMATS.includes(adapter.streamFormat)) {
+    throw new TypeError(
+      `Adapter "${adapter.name}" streams, so streamFormat must be one of ${STREAM_FORMATS.join(", ")}`,
+    );
   }
   return Object.freeze({ ...adapter });
 }

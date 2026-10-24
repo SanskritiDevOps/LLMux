@@ -20,8 +20,14 @@ describe("defineAdapter", () => {
     expect(Object.isFrozen(adapter)).toBe(true);
   });
 
-  it("allows parseStreamChunk to be added later", () => {
-    expect(() => defineAdapter(fakeAdapter({ parseStreamChunk: () => [] }))).not.toThrow();
+  it("allows an adapter without streaming", () => {
+    expect(defineAdapter(fakeAdapter()).parseStreamChunk).toBeUndefined();
+  });
+
+  it("accepts a streaming adapter that names its stream format", () => {
+    expect(() =>
+      defineAdapter(fakeAdapter({ parseStreamChunk: () => [], streamFormat: "ndjson" })),
+    ).not.toThrow();
   });
 
   it.each([
@@ -32,6 +38,12 @@ describe("defineAdapter", () => {
     ["a missing parseResponse", { parseResponse: undefined }, /missing parseResponse/],
     ["a missing mapError", { mapError: "nope" }, /missing mapError/],
     ["a non-function parseStreamChunk", { parseStreamChunk: {} }, /parseStreamChunk/],
+    ["parseStreamChunk without a streamFormat", { parseStreamChunk: () => [] }, /streamFormat/],
+    [
+      "an unknown streamFormat",
+      { parseStreamChunk: () => [], streamFormat: "websocket" },
+      /streamFormat must be one of sse, ndjson/,
+    ],
   ])("rejects %s", (_label, overrides, message) => {
     expect(() => defineAdapter(fakeAdapter(overrides))).toThrow(message);
   });

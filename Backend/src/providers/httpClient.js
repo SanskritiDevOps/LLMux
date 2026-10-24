@@ -4,9 +4,10 @@ import { GatewayError } from "../utils/errors.js";
 /**
  * The one place LLMux calls providers over HTTP. Adapters build the request and parse
  * the result; this module only moves bytes, enforces the timeout and turns transport
- * failures into GatewayErrors. Streaming reads are added with SSE (Day 7).
+ * failures into GatewayErrors. sendRequest() reads a whole answer; openStream() hands back
+ * a streamed one as it arrives.
  *
- * Outcomes:
+ * Outcomes (both functions):
  *   - any HTTP response (2xx or not) → resolved { ok, status, headers, body, durationMs };
  *     non-2xx bodies are handed to adapter.mapError, which knows the provider's format
  *   - the timeout fires              → GatewayError TIMEOUT (retryable)
@@ -59,6 +60,125 @@ export async function sendRequest(
       cause: err,
     });
   }
+}
+
+/**
+ * Opens a streamed request. A 2xx resolves as soon as the headers arrive, with `chunks`:
+ * the body as an async iterable of bytes. Anything else is read whole, exactly like
+ * sendRequest(), so adapter.mapError sees the same { status, body }.
+ *
+ * `timeoutMs` is an idle limit, not a total one: it covers waiting for the headers and
+ * then each gap between chunks. A long answer that keeps arriving is never cut off; a
+ * provider that goes silent mid-stream is. Errors while reading the chunks follow the
+ * same outcomes as above (TIMEOUT, PROVIDER_UNAVAILABLE, or the caller's AbortError).
+ * Stopping early (break, or return() on the iterator) cancels the upstream request.
+ *
+ * @param {import("./adapter.js").ProviderRequest} request
+ * @param {{ provider: string, timeoutMs?: number, signal?: AbortSignal }} options
+ */
+export async function openStream(
+  { url, method = "POST", headers = {}, body },
+  { provider, timeoutMs = env.REQUEST_TIMEOUT_MS, signal },
+) {
+  const upstream = new AbortController();
+  const combined = signal ? AbortSignal.any([signal, upstream.signal]) : upstream.signal;
+  let timedOut = false;
+  let timer;
+  const restartIdleTimer = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      timedOut = true;
+      upstream.abort();
+    }, timeoutMs);
+  };
+
+  const toGatewayError = (err) => {
+    if (signal?.aborted) return err;
+    if (timedOut) {
+      return new GatewayError("TIMEOUT", `${provider} went silent for ${timeoutMs} ms`, {
+        provider,
+        cause: err,
+      });
+    }
+    return new GatewayError("PROVIDER_UNAVAILABLE", `Lost the connection to ${provider}`, {
+      provider,
+      cause: err,
+    });
+  };
+
+  const started = performance.now();
+  restartIdleTimer();
+  let response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: { "content-type": "application/json", ...headers },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: combined,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    if (signal?.aborted) throw err;
+    if (timedOut) {
+      throw new GatewayError("TIMEOUT", `${provider} did not respond within ${timeoutMs} ms`, {
+        provider,
+        cause: err,
+      });
+    }
+    throw new GatewayError("PROVIDER_UNAVAILABLE", `Could not reach ${provider}`, {
+      provider,
+      cause: err,
+    });
+  }
+
+  const result = {
+    ok: response.ok,
+    status: response.status,
+    headers: response.headers,
+    durationMs: Math.round(performance.now() - started),
+  };
+
+  if (!response.ok) {
+    try {
+      const text = await response.text();
+      return { ...result, body: parseBody(text, response.headers.get("content-type")) };
+    } catch (err) {
+      throw toGatewayError(err);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function* chunks() {
+    const reader = response.body.getReader();
+    let finished = false;
+    try {
+      while (true) {
+        let next;
+        try {
+          next = await reader.read();
+        } catch (err) {
+          throw toGatewayError(err);
+        }
+        if (next.done) {
+          finished = true;
+          return;
+        }
+        restartIdleTimer();
+        yield next.value;
+      }
+    } finally {
+      clearTimeout(timer);
+      if (!finished) {
+        // The consumer stopped early or reading failed: close the upstream connection
+        // so the provider stops generating tokens nobody will read.
+        upstream.abort();
+        reader.releaseLock();
+      }
+    }
+  }
+
+  return { ...result, body: null, chunks: chunks() };
 }
 
 /** JSON when it parses, otherwise the raw text (error pages are often HTML or plain text). */
