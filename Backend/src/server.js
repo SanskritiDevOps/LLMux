@@ -6,6 +6,7 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 // and exits, instead of crashing with a stack trace before any code runs.
 // console is used here because the logger itself depends on a valid environment.
 let env, createApp, logger, prisma, redis;
+let createGateway, createKeysRepository, createKeyLookup, attachWebSocket;
 try {
   ({ env } = await import("./config/env.js"));
   // Validates aliases, fallback chains and prices; a typo there stops startup here.
@@ -14,13 +15,23 @@ try {
   ({ prisma } = await import("./config/db.js"));
   ({ redis } = await import("./config/redis.js"));
   ({ createApp } = await import("./app.js"));
+  ({ createGateway } = await import("./gateway/gateway.service.js"));
+  ({ createKeysRepository } = await import("./modules/keys/keys.repository.js"));
+  ({ createKeyLookup } = await import("./modules/keys/keyLookup.js"));
+  ({ attachWebSocket } = await import("./transports/websocket.js"));
 } catch (err) {
   console.error(err.message);
   process.exit(1);
 }
 
-// A plain HTTP server (not app.listen) so the WebSocket server can share it later.
-const server = http.createServer(createApp({ logger }));
+// One gateway and one key lookup for both transports, so HTTP and WebSocket behave alike.
+const gateway = createGateway();
+const keys = createKeysRepository();
+const keyLookup = createKeyLookup({ keys, redis });
+
+// A plain HTTP server (not app.listen) so the WebSocket server can share its port.
+const server = http.createServer(createApp({ logger, gateway, keys, redis }));
+const websocket = attachWebSocket(server, { gateway, keyLookup, logger });
 
 server.on("error", (err) => {
   if (err.code === "EADDRINUSE") {
@@ -63,6 +74,9 @@ function shutdown(signal) {
     process.exit(0);
   });
   server.closeIdleConnections();
+  // WebSockets would otherwise stay open until the forced exit; closing them also
+  // cancels their provider calls, and clients see 1001 "going away" and can reconnect.
+  websocket.close();
 
   // Long-lived streams must not block a deploy forever.
   setTimeout(() => {

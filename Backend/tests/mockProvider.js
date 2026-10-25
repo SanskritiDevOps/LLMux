@@ -24,12 +24,12 @@ import express from "express";
  * Every streamed event is written in two halves, so the gateway always has to join JSON
  * split across network writes. Every request is recorded, and requests whose client went
  * away before an answer was complete are counted in `aborted`, which is how tests prove
- * upstream calls get cancelled.
+ * upstream calls get cancelled. `open` counts the requests still being answered.
  */
 export async function startMockProvider() {
   const behaviors = { gemini: { type: "ok" }, ollama: { type: "ok" } };
   const requests = [];
-  const state = { aborted: 0 };
+  const state = { aborted: 0, open: 0 };
 
   const app = express();
   app.use(express.json());
@@ -46,7 +46,9 @@ export async function startMockProvider() {
     }
 
     requests.push({ provider, path: req.path, headers: req.headers, body: req.body });
+    state.open += 1;
     res.on("close", () => {
+      state.open -= 1;
       if (!res.writableFinished) state.aborted += 1;
     });
 
@@ -80,6 +82,10 @@ export async function startMockProvider() {
   return {
     url: `http://127.0.0.1:${server.address().port}`,
     requests,
+    /** Requests still being answered; tests wait for 0 so a slow stream from one test can't be counted in the next. */
+    get open() {
+      return state.open;
+    },
     get aborted() {
       return state.aborted;
     },
