@@ -6,7 +6,7 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 // and exits, instead of crashing with a stack trace before any code runs.
 // console is used here because the logger itself depends on a valid environment.
 let env, createApp, logger, prisma, redis;
-let createGateway, createKeysRepository, createKeyLookup, attachWebSocket;
+let createGateway, createKeysRepository, createKeyLookup, attachWebSocket, createUsageWriter;
 try {
   ({ env } = await import("./config/env.js"));
   // Validates aliases, fallback chains and prices; a typo there stops startup here.
@@ -19,6 +19,7 @@ try {
   ({ createKeysRepository } = await import("./modules/keys/keys.repository.js"));
   ({ createKeyLookup } = await import("./modules/keys/keyLookup.js"));
   ({ attachWebSocket } = await import("./transports/websocket.js"));
+  ({ createUsageWriter } = await import("./modules/usage/usageWriter.js"));
 } catch (err) {
   console.error(err.message);
   process.exit(1);
@@ -28,10 +29,12 @@ try {
 const gateway = createGateway();
 const keys = createKeysRepository();
 const keyLookup = createKeyLookup({ keys, redis });
+// Every chat on either transport writes one usage row, in batches, off the request path.
+const usage = createUsageWriter({ logger });
 
 // A plain HTTP server (not app.listen) so the WebSocket server can share its port.
-const server = http.createServer(createApp({ logger, gateway, keys, redis }));
-const websocket = attachWebSocket(server, { gateway, keyLookup, logger });
+const server = http.createServer(createApp({ logger, gateway, keys, redis, usage }));
+const websocket = attachWebSocket(server, { gateway, keyLookup, logger, usage });
 
 server.on("error", (err) => {
   if (err.code === "EADDRINUSE") {
@@ -68,15 +71,18 @@ function shutdown(signal) {
   logger.info({ signal }, "Shutting down");
 
   // Stop accepting new connections and let in-flight requests finish,
-  // then close the database connections those requests were using.
+  // write the usage rows they recorded, then close the database connections.
+  // WebSockets would otherwise stay open until the forced exit; closing them also
+  // cancels their provider calls, and clients see 1001 "going away" and can reconnect.
+  // It resolves once their chats have recorded usage.
+  const websocketClosed = websocket.close();
   server.close(async () => {
+    await websocketClosed;
+    await usage.close();
     await closeConnections();
     process.exit(0);
   });
   server.closeIdleConnections();
-  // WebSockets would otherwise stay open until the forced exit; closing them also
-  // cancels their provider calls, and clients see 1001 "going away" and can reconnect.
-  websocket.close();
 
   // Long-lived streams must not block a deploy forever.
   setTimeout(() => {

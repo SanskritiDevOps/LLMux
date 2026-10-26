@@ -13,7 +13,7 @@ import { createUsersRepository } from "./modules/auth/users.repository.js";
 import { createKeysRepository } from "./modules/keys/keys.repository.js";
 import { keysRoutes } from "./modules/keys/keys.routes.js";
 import { systemRoutes } from "./routes/system.routes.js";
-import { v1Routes } from "./routes/v1.routes.js";
+import { EXPOSED_HEADERS, v1Routes } from "./routes/v1.routes.js";
 import { logger as defaultLogger } from "./utils/logger.js";
 
 const defaultChecks = { database: checkDatabase, redis: checkRedis };
@@ -34,6 +34,8 @@ const defaultChecks = { database: checkDatabase, redis: checkRedis };
  *   in-memory repository
  * @param {import("ioredis").Redis} [deps.redis] used for cached key lookups; tests pass an
  *   in-memory stand-in
+ * @param {{ record: (row: object) => void }} [deps.usage] the usage writer; server.js passes
+ *   the real one, and without it usage rows are discarded (tests pass a fake to inspect them)
  * @param {(app: import("express").Express) => void} [deps.extraRoutes] tests register
  *   throwaway routes here so they sit before the 404 and error handlers
  */
@@ -44,6 +46,7 @@ export function createApp({
   users = createUsersRepository(),
   keys = createKeysRepository(),
   redis = defaultRedis,
+  usage,
   extraRoutes,
 } = {}) {
   const app = express();
@@ -55,12 +58,15 @@ export function createApp({
   app.use(helmet());
   // Only the dashboard is allowed to call the API from a browser, and it may send its
   // session cookie (credentials). Credentials require an exact origin, never "*".
-  app.use(cors({ origin: env.DASHBOARD_URL, credentials: true }));
+  // exposedHeaders lets the dashboard read X-Request-Id and the X-LLMux-* headers.
+  app.use(
+    cors({ origin: env.DASHBOARD_URL, credentials: true, exposedHeaders: [...EXPOSED_HEADERS] }),
+  );
   app.use(express.json({ limit: env.MAX_BODY_SIZE }));
 
   app.use(systemRoutes(readinessChecks));
   // keys and redis are what /v1 uses to check gateway keys.
-  app.use("/v1", v1Routes({ gateway, keys, redis }));
+  app.use("/v1", v1Routes({ gateway, keys, redis, usage }));
   app.use("/api/auth", authRoutes({ users }));
   app.use("/api/keys", keysRoutes({ users, keys, redis }));
 

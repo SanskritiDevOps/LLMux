@@ -31,6 +31,48 @@ function estimateUsage(request, outputChars) {
   return { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens };
 }
 
+const NO_USAGE = Object.freeze({ inputTokens: 0, outputTokens: 0, totalTokens: 0 });
+
+/**
+ * What a request did, for the usage log, whatever its outcome. The gateway passes it to
+ * `context.onFinish` exactly once per chat() or stream(), on success, failure or cancel.
+ *
+ * @typedef {Object} CallSummary
+ * @property {string | null} alias  null for a direct provider:model call, or an unknown model
+ * @property {{ provider: string, model: string } | null} target  null if no provider was chosen
+ * @property {{ inputTokens: number, outputTokens: number, totalTokens: number }} usage
+ * @property {boolean} usageEstimated
+ * @property {number} costMicroUsd
+ * @property {number} savedMicroUsd
+ * @property {number} attempts
+ * @property {boolean} fallbackUsed
+ * @property {boolean} cached
+ * @property {number | null} providerLatencyMs  until the answer (JSON) or the headers (stream)
+ * @property {number | null} timeToFirstTokenMs  streams only
+ */
+function emptySummary() {
+  return {
+    alias: null,
+    target: null,
+    usage: NO_USAGE,
+    usageEstimated: false,
+    costMicroUsd: 0,
+    savedMicroUsd: 0,
+    attempts: 1,
+    fallbackUsed: false,
+    cached: false,
+    providerLatencyMs: null,
+    timeToFirstTokenMs: null,
+  };
+}
+
+/** The provider's figures when it sent them, otherwise an estimate. */
+function finalUsage(request, progress) {
+  return progress.usage
+    ? { usage: progress.usage, usageEstimated: false }
+    : { usage: estimateUsage(request, progress.outputChars), usageEstimated: true };
+}
+
 /**
  * The core of LLMux: resolve the model, translate with the adapter, call the provider,
  * translate back, attach cost. It knows no provider format (only adapters do) and no
@@ -71,20 +113,43 @@ export function createGateway({
     return error;
   }
 
+  /** Records which provider a request went to, as soon as it is known. */
+  function chosen(summary, resolved, target) {
+    summary.alias = resolved.alias;
+    summary.target = { provider: target.provider, model: target.model };
+  }
+
+  /**
+   * @typedef {{ requestId: string, signal?: AbortSignal, log: import("pino").Logger,
+   *   onFinish?: (summary: CallSummary) => void }} CallContext
+   */
+
   /**
    * @param {import("../providers/adapter.js").UnifiedRequest} request  already validated
-   * @param {{ requestId: string, signal?: AbortSignal, log: import("pino").Logger }} context
+   * @param {CallContext} context
    */
-  async function chat(request, { requestId, signal, log }) {
+  async function chat(request, { requestId, signal, log, onFinish }) {
     if (request.stream) {
       // The route sends streaming requests to stream(); reaching this is a bug.
       throw new TypeError("gateway.chat() does not stream; use gateway.stream()");
     }
 
+    const summary = emptySummary();
+    try {
+      return await answer(request, { requestId, signal, log, summary });
+    } finally {
+      onFinish?.(summary);
+    }
+  }
+
+  /** The body of chat(); fills in `summary` as it goes. */
+  async function answer(request, { requestId, signal, log, summary }) {
     const started = performance.now();
     const { resolved, target, adapter, providerRequest } = prepare(request);
+    chosen(summary, resolved, target);
 
     const result = await send(providerRequest, { provider: target.provider, timeoutMs, signal });
+    summary.providerLatencyMs = result.durationMs;
     const callLog = { provider: target.provider, model: target.model, status: result.status };
 
     if (!result.ok) {
@@ -105,6 +170,12 @@ export function createGateway({
     }
     const { costMicroUsd, savedMicroUsd } = costBreakdown(parsed.usage, target.pricing);
     const latencyMs = Math.round(performance.now() - started);
+    Object.assign(summary, {
+      usage: parsed.usage,
+      usageEstimated: parsed.usageEstimated,
+      costMicroUsd,
+      savedMicroUsd,
+    });
 
     log.info(
       {
@@ -155,47 +226,68 @@ export function createGateway({
    * because the status line has already been sent. Stopping the iteration early (the
    * client left) cancels the provider request.
    *
+   * The usage summary passed to `context.onFinish` covers streams that end early too: once
+   * the provider has accepted the stream, the tokens used so far are counted (estimated
+   * when the provider hadn't sent figures yet), because the provider bills them anyway.
+   *
    * @param {import("../providers/adapter.js").UnifiedRequest} request  already validated
-   * @param {{ requestId: string, signal?: AbortSignal, log: import("pino").Logger }} context
+   * @param {CallContext} context
    * @returns {AsyncGenerator<import("zod").infer<typeof import("./schemas.js").StreamEventSchema>>}
    */
-  async function* stream(request, { requestId, signal, log }) {
+  async function* stream(request, { requestId, signal, log, onFinish }) {
     const started = performance.now();
-    const { target, adapter, providerRequest } = prepare({ ...request, stream: true });
-    if (!adapter.parseStreamChunk) {
-      throw new GatewayError(
-        "INVALID_REQUEST",
-        `${target.provider} does not support streaming yet; send stream: false`,
-      );
-    }
-
+    const summary = emptySummary();
+    // Shared with relay(), so `finally` can see how far the stream got.
+    const progress = {
+      accepted: false,
+      usage: undefined,
+      outputChars: 0,
+      timeToFirstTokenMs: null,
+    };
+    let target;
     // Aborted in `finally`, so the provider connection closes however the iteration ends,
     // even if the consumer stops right after `start`, before any chunk was read.
     const cancel = new AbortController();
     try {
+      const prepared = prepare({ ...request, stream: true });
+      ({ target } = prepared);
+      const { resolved, adapter, providerRequest } = prepared;
+      chosen(summary, resolved, target);
+      if (!adapter.parseStreamChunk) {
+        throw new GatewayError(
+          "INVALID_REQUEST",
+          `${target.provider} does not support streaming yet; send stream: false`,
+        );
+      }
+
       const result = await openStream(providerRequest, {
         provider: target.provider,
         timeoutMs,
         signal: signal ? AbortSignal.any([signal, cancel.signal]) : cancel.signal,
       });
+      summary.providerLatencyMs = result.durationMs;
       const callLog = { provider: target.provider, model: target.model, status: result.status };
       if (!result.ok) {
         throw providerFailure(adapter, result, callLog, log);
       }
 
+      progress.accepted = true;
       yield { type: "start", id: requestId, model: request.model, provider: target.provider };
-      yield* relay(request, { started, target, adapter, result, callLog, log });
+      yield* relay(request, { started, target, adapter, result, callLog, log, progress });
     } finally {
       cancel.abort();
+      if (progress.accepted) {
+        const { usage, usageEstimated } = finalUsage(request, progress);
+        Object.assign(summary, { usage, usageEstimated }, costBreakdown(usage, target.pricing));
+        summary.timeToFirstTokenMs = progress.timeToFirstTokenMs;
+      }
+      onFinish?.(summary);
     }
   }
 
   /** The body of stream(): provider payloads → delta events, then the final end event. */
-  async function* relay(request, { started, target, adapter, result, callLog, log }) {
-    let usage;
+  async function* relay(request, { started, target, adapter, result, callLog, log, progress }) {
     let finishReason;
-    let outputChars = 0;
-    let timeToFirstTokenMs;
     for await (const payload of readStreamPayloads(result.chunks, adapter.streamFormat)) {
       let events;
       try {
@@ -210,11 +302,11 @@ export function createGateway({
 
       for (const event of events) {
         if (event.type === "delta") {
-          timeToFirstTokenMs ??= Math.round(performance.now() - started);
-          outputChars += event.text.length;
+          progress.timeToFirstTokenMs ??= Math.round(performance.now() - started);
+          progress.outputChars += event.text.length;
           yield { type: "delta", text: event.text };
         } else if (event.type === "usage") {
-          usage = event.usage;
+          progress.usage = event.usage;
         } else if (event.type === "finish") {
           finishReason = event.finishReason;
         }
@@ -232,9 +324,8 @@ export function createGateway({
       );
     }
 
-    const usageEstimated = usage === undefined;
-    const finalUsage = usage ?? estimateUsage(request, outputChars);
-    const { costMicroUsd } = costBreakdown(finalUsage, target.pricing);
+    const { usage, usageEstimated } = finalUsage(request, progress);
+    const { costMicroUsd } = costBreakdown(usage, target.pricing);
     const latencyMs = Math.round(performance.now() - started);
 
     log.info(
@@ -242,9 +333,9 @@ export function createGateway({
         ...callLog,
         streamed: true,
         latencyMs,
-        timeToFirstTokenMs,
-        inputTokens: finalUsage.inputTokens,
-        outputTokens: finalUsage.outputTokens,
+        timeToFirstTokenMs: progress.timeToFirstTokenMs,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
         usageEstimated,
         costMicroUsd,
       },
@@ -254,7 +345,7 @@ export function createGateway({
     yield {
       type: "end",
       finishReason,
-      usage: finalUsage,
+      usage,
       ...(usageEstimated && { usageEstimated: true }),
       latencyMs,
     };

@@ -3,9 +3,28 @@ import { listModels as defaultListModels } from "../gateway/catalog.js";
 import { ChatRequestSchema } from "../gateway/schemas.js";
 import { requireApiKey } from "../middleware/apiKeyAuth.js";
 import { toGatewayError } from "../middleware/errorHandler.js";
+import { REQUEST_ID_HEADER } from "../middleware/requestId.js";
 import { validate } from "../middleware/validate.js";
 import { createKeyLookup } from "../modules/keys/keyLookup.js";
+import { discardUsage, trackUsage } from "../modules/usage/usageRecorder.js";
 import { createSseWriter } from "../transports/sse.js";
+
+/**
+ * Response headers that describe how a chat was answered (README section 7). They repeat
+ * what the body says, so a client, proxy or curl -i can see it without parsing JSON, and
+ * so a stream says who is answering before the first token.
+ */
+export const LLMUX_HEADERS = Object.freeze({
+  provider: "X-LLMux-Provider",
+  providerModel: "X-LLMux-Provider-Model",
+  cache: "X-LLMux-Cache",
+  attempts: "X-LLMux-Attempts",
+  fallbackUsed: "X-LLMux-Fallback-Used",
+  latencyMs: "X-LLMux-Latency-Ms",
+});
+
+/** Headers a browser app (the dashboard) may read; CORS hides all others. */
+export const EXPOSED_HEADERS = Object.freeze([REQUEST_ID_HEADER, ...Object.values(LLMUX_HEADERS)]);
 
 /**
  * The public gateway API. Versioned in the path so /v1 never changes underneath clients.
@@ -17,7 +36,9 @@ import { createSseWriter } from "../transports/sse.js";
  *   keys?: ReturnType<typeof import("../modules/keys/keys.repository.js").createKeysRepository>,
  *   redis?: import("ioredis").Redis,
  *   keyLookup?: ReturnType<typeof createKeyLookup>,
- * }} deps  keyLookup defaults to a Redis-cached lookup over `keys`
+ *   usage?: { record: (row: object) => void },
+ * }} deps  keyLookup defaults to a Redis-cached lookup over `keys`; usage is the usage
+ *   writer (server.js passes the real one; without it, rows are discarded)
  */
 export function v1Routes({
   gateway,
@@ -25,6 +46,7 @@ export function v1Routes({
   keys,
   redis,
   keyLookup = createKeyLookup({ keys, redis }),
+  usage = discardUsage,
 }) {
   const router = Router();
 
@@ -43,22 +65,49 @@ export function v1Routes({
       if (!res.writableFinished) controller.abort();
     });
     const request = req.validated.body;
-    const context = { requestId: req.id, signal: controller.signal, log: req.log };
+    // One usage row per chat, written after the response, whatever the outcome.
+    const tracker = trackUsage({
+      usage,
+      requestId: req.id,
+      apiKeyId: req.apiKey.id,
+      request,
+      transport: request.stream ? "sse" : "http",
+      log: req.log,
+    });
+    const context = {
+      requestId: req.id,
+      signal: controller.signal,
+      log: req.log,
+      onFinish: tracker.onFinish,
+    };
 
+    let outcome = {};
     try {
       if (request.stream) {
-        await streamToSse(gateway.stream(request, context), res, req.log);
+        outcome = await streamToSse(gateway.stream(request, context), res, req.log);
         return;
       }
-      const { response } = await gateway.chat(request, context);
+      const { response, meta } = await gateway.chat(request, context);
+      res.set({
+        [LLMUX_HEADERS.provider]: response.provider,
+        [LLMUX_HEADERS.providerModel]: response.providerModel,
+        [LLMUX_HEADERS.cache]: response.cached ? "HIT" : "MISS",
+        [LLMUX_HEADERS.attempts]: String(meta.attempts),
+        [LLMUX_HEADERS.fallbackUsed]: String(response.fallbackUsed),
+        [LLMUX_HEADERS.latencyMs]: String(response.latencyMs),
+      });
       res.json(response);
     } catch (err) {
       if (controller.signal.aborted) {
         // Nobody is listening any more, so there is no response to send.
         req.log.info("Client disconnected; provider call cancelled");
+        outcome = { cancelled: true };
         return;
       }
+      outcome = { error: toGatewayError(err) };
       throw err;
+    } finally {
+      tracker.finish(outcome);
     }
   });
 
@@ -74,17 +123,25 @@ export function v1Routes({
  * @param {AsyncGenerator<{ type: string }>} events  from gateway.stream()
  * @param {import("express").Response} res
  * @param {import("pino").Logger} log
+ * @returns {Promise<{ error?: import("../utils/errors.js").GatewayError, cancelled?: boolean }>}
+ *   how the stream ended, for the usage log
  */
 async function streamToSse(events, res, log) {
   const first = await events.next();
 
+  // Only what is known before the first token; the rest (latency, usage) is in `end`.
+  res.set({
+    [LLMUX_HEADERS.provider]: first.value.provider,
+    [LLMUX_HEADERS.cache]: "MISS",
+  });
   const sse = createSseWriter(res);
   sse.open();
   try {
     for (let step = first; !step.done; step = await events.next()) {
       // false means the client has gone: stop reading, which cancels the provider call.
-      if (!(await sse.send(step.value))) break;
+      if (!(await sse.send(step.value))) return { cancelled: true };
     }
+    return {};
   } catch (err) {
     if (res.destroyed) throw err;
     const error = toGatewayError(err);
@@ -92,6 +149,7 @@ async function streamToSse(events, res, log) {
       log.error({ err }, "Stream failed");
     }
     await sse.send({ type: "error", code: error.code, message: error.message });
+    return { error };
   } finally {
     // Closes the provider connection if the loop stopped early; a no-op when it finished.
     await events.return();

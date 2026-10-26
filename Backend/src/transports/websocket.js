@@ -4,6 +4,7 @@ import { env } from "../config/env.js";
 import { authenticateKey } from "../middleware/apiKeyAuth.js";
 import { toGatewayError } from "../middleware/errorHandler.js";
 import { generateRequestId } from "../middleware/requestId.js";
+import { discardUsage, trackUsage } from "../modules/usage/usageRecorder.js";
 import { GatewayError } from "../utils/errors.js";
 import { errorMessage, parseClientMessage } from "./wsProtocol.js";
 
@@ -49,8 +50,10 @@ export function sizeToBytes(size) {
  *   gateway: ReturnType<typeof import("../gateway/gateway.service.js").createGateway>,
  *   keyLookup: ReturnType<typeof import("../modules/keys/keyLookup.js").createKeyLookup>,
  *   logger: import("pino").Logger,
+ *   usage?: { record: (row: object) => void },
  *   authTimeoutMs?: number, heartbeatMs?: number, maxInFlight?: number,
- * }} deps  the timings and limits can be lowered in tests
+ * }} deps  the timings and limits can be lowered in tests; usage is the usage writer (each
+ *   chat records one row with transport "ws"; without it, rows are discarded)
  * @returns {{ wss: WebSocketServer, close: () => Promise<void> }}
  */
 export function attachWebSocket(
@@ -62,6 +65,7 @@ export function attachWebSocket(
     authTimeoutMs = AUTH_TIMEOUT_MS,
     heartbeatMs = HEARTBEAT_INTERVAL_MS,
     maxInFlight = MAX_IN_FLIGHT,
+    usage = discardUsage,
   },
 ) {
   // A frame larger than this closes the socket (code 1009), like a 413 over HTTP.
@@ -78,6 +82,14 @@ export function attachWebSocket(
   });
 
   wss.on("connection", (ws) => handleConnection(ws));
+
+  // Every chat still running on any socket, so close() can wait until each has finished
+  // and recorded its usage row.
+  const chats = new Set();
+  function track(chat) {
+    chats.add(chat);
+    chat.finally(() => chats.delete(chat));
+  }
 
   const heartbeat = setInterval(() => {
     for (const ws of wss.clients) {
@@ -193,18 +205,36 @@ export function attachWebSocket(
       requestsStarted += 1;
       const id = generateRequestId();
       const chatLog = log.child({ reqId: id, wsRequestId: requestId });
+      const request = { ...body, stream: true };
+      // One usage row per chat, under the server's request ID (client requestIds repeat
+      // across sockets).
+      const tracker = trackUsage({
+        usage,
+        requestId: id,
+        apiKeyId: apiKey.id,
+        request,
+        transport: "ws",
+        log: chatLog,
+      });
 
+      let outcome = {};
       try {
-        const events = gateway.stream(
-          { ...body, stream: true },
-          { requestId: id, signal: controller.signal, log: chatLog },
-        );
+        const events = gateway.stream(request, {
+          requestId: id,
+          signal: controller.signal,
+          log: chatLog,
+          onFinish: tracker.onFinish,
+        });
         for await (const event of events) {
           // false: the socket closed, which has already aborted the provider call.
-          if (!(await send({ ...event, requestId }))) break;
+          if (!(await send({ ...event, requestId }))) {
+            outcome = { cancelled: true };
+            break;
+          }
         }
       } catch (err) {
         if (controller.signal.aborted) {
+          outcome = { cancelled: true };
           if (controller.signal.reason === CANCELLED_BY_CLIENT) {
             chatLog.info("Client cancelled; provider call cancelled");
             send({ type: "cancelled", requestId });
@@ -212,10 +242,12 @@ export function attachWebSocket(
           return;
         }
         const error = toGatewayError(err);
+        outcome = { error };
         if (error.code === "INTERNAL_ERROR") chatLog.error({ err }, "WebSocket chat failed");
         send(errorMessage(error, requestId));
       } finally {
         inFlight.delete(requestId);
+        tracker.finish(outcome);
       }
     }
 
@@ -252,7 +284,7 @@ export function attachWebSocket(
         case "chat":
           // Not awaited: the chat streams in the background so the socket keeps
           // handling other messages (a cancel, another chat) meanwhile.
-          runChat(message).catch((err) => log.error({ err }, "WebSocket chat crashed"));
+          track(runChat(message).catch((err) => log.error({ err }, "WebSocket chat crashed")));
           return;
         case "cancel":
           return cancel(message);
@@ -292,11 +324,15 @@ export function attachWebSocket(
 
   return {
     wss,
-    /** For shutdown: closes every socket (cancelling their chats) and stops the heartbeat. */
-    close() {
+    /**
+     * For shutdown: closes every socket (cancelling their chats) and stops the heartbeat.
+     * Resolves once the sockets are closed and every chat has recorded its usage.
+     */
+    async close() {
       clearInterval(heartbeat);
       for (const ws of wss.clients) ws.close(CLOSE_CODES.GOING_AWAY, "Server shutting down");
-      return new Promise((resolve) => wss.close(() => resolve()));
+      await new Promise((resolve) => wss.close(() => resolve()));
+      await Promise.allSettled([...chats]);
     },
   };
 }
