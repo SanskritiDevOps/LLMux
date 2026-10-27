@@ -6,6 +6,7 @@ import { readStreamPayloads } from "../providers/streamReader.js";
 import { GatewayError } from "../utils/errors.js";
 import { costBreakdown, microUsdToUsd } from "./cost.js";
 import { createDeadline } from "./deadline.js";
+import { STATES as CIRCUIT, countsAsFailure, noCircuitBreaker } from "./circuitBreaker.js";
 import { classifyError } from "./errorPolicy.js";
 import { getProviderSettings } from "./providerSettings.js";
 import { backoffDelay, retryAfterMs, sleep } from "./retry.js";
@@ -88,7 +89,8 @@ function finalUsage(request, progress) {
  *
  * Every call walks the alias's fallback chain (README section 14): each target is tried,
  * retried with backoff when the error allows it, and the next target is tried when it
- * doesn't answer, all inside one overall deadline. Every dependency, including the wait
+ * doesn't answer, all inside one overall deadline; providers known to be down are skipped
+ * (the circuit breaker). Every dependency, including the wait
  * between retries, can be swapped in tests.
  */
 export function createGateway({
@@ -103,6 +105,8 @@ export function createGateway({
   openStream = openProviderStream,
   wait = sleep,
   random = Math.random,
+  // server.js passes the Redis-backed breaker; without one, every provider counts as closed.
+  breaker = noCircuitBreaker,
 } = {}) {
   /** Builds one target's provider request. */
   function build(request, target, resolved) {
@@ -139,6 +143,8 @@ export function createGateway({
    *     next target instead
    *   - an error that allows no fallback (a 400, a bug) is thrown at once
    *   - the deadline caps everything: each attempt's timeout is cut to the time left
+   *   - a provider whose circuit is open is skipped without being called; in half-open,
+   *     only the one test request reaches it, with no retries (circuitBreaker.js)
    *
    * `summary` is kept up to date (attempts, fallbackUsed, the target being tried), so the
    * usage log is right whichever way the call ends.
@@ -148,6 +154,22 @@ export function createGateway({
    *   fallbackUsed: boolean, timeoutMs: number }) => Promise<T>} attempt
    * @returns {Promise<T>}
    */
+  function skipped(target, circuit, log) {
+    log.info(
+      { provider: target.provider, circuit: circuit.state },
+      "Circuit open; skipping provider",
+    );
+  }
+
+  /** What the client gets if every target was skipped because its circuit was open. */
+  function circuitOpenError(target) {
+    return new GatewayError(
+      "PROVIDER_UNAVAILABLE",
+      `${target.provider} is temporarily unavailable after repeated failures`,
+      { provider: target.provider, retryable: true },
+    );
+  }
+
   async function withFallback(request, { signal, log, summary, deadline }, attempt) {
     const resolved = resolveModel(request.model, { config, enabledProviders });
     summary.alias = resolved.alias;
@@ -156,10 +178,26 @@ export function createGateway({
     let lastError;
     for (const [index, target] of resolved.targets.entries()) {
       const hasNext = index < resolved.targets.length - 1;
-      for (let retry = 0; retry <= maxRetries; retry += 1) {
+      let circuit = await breaker.allow(target.provider);
+      if (!circuit.allowed) {
+        skipped(target, circuit, log);
+        lastError = circuitOpenError(target);
+        continue;
+      }
+      // In half-open, this request is the one test of whether the provider recovered:
+      // one try, no retries, whatever the outcome.
+      const tries = circuit.state === CIRCUIT.HALF_OPEN ? 1 : 1 + maxRetries;
+      for (let retry = 0; retry < tries; retry += 1) {
         if (retry > 0) {
           const pause = Math.max(backoffDelay(retry, { random }), lastError.retryAfterMs ?? 0);
           if (!deadline.allowsWait(pause) || (hasNext && pause > MAX_WAIT_BEFORE_FALLBACK_MS)) {
+            break;
+          }
+          // The failures so far may just have opened the circuit (this request's, or other
+          // requests' at the same time): if so, stop retrying a provider known to be down.
+          circuit = await breaker.allow(target.provider);
+          if (!circuit.allowed) {
+            skipped(target, circuit, log);
             break;
           }
           log.info({ provider: target.provider, retry, waitMs: pause }, "Retrying provider");
@@ -174,18 +212,23 @@ export function createGateway({
           target: { provider: target.provider, model: target.model },
         });
         try {
-          return await attempt({
+          const result = await attempt({
             target,
             resolved,
             attempt: attempts,
             fallbackUsed: index > 0,
             timeoutMs: deadline.timeoutFor(timeoutMs),
           });
+          await breaker.recordSuccess(target.provider, circuit.state);
+          return result;
         } catch (err) {
           // The client left: not the provider's fault, so no retry and no fallback.
           if (signal?.aborted) throw err;
           lastError = err;
           const decision = classifyError(err);
+          if (countsAsFailure(decision)) {
+            await breaker.recordFailure(target.provider, circuit.state);
+          }
           log.warn(
             {
               provider: target.provider,

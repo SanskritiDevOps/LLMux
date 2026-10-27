@@ -19,6 +19,10 @@ export default defineConfig({
     },
     // Migrates the test database first when TEST_REAL_DEPS=1; otherwise does nothing.
     globalSetup: ["./tests/setup/testDatabase.js"],
+    // expect.poll() waits for something asynchronous to happen (a cancel reaching the mock
+    // provider, a log line). Vitest gives up after 1 s by default, which a busy machine can
+    // exceed. A passing poll still returns as soon as its condition is true.
+    expect: { poll: { timeout: 5000 } },
     projects: [
       {
         extends: true,

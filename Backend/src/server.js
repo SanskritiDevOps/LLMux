@@ -7,6 +7,7 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 // console is used here because the logger itself depends on a valid environment.
 let env, createApp, logger, prisma, redis;
 let createGateway, createKeysRepository, createKeyLookup, attachWebSocket, createUsageWriter;
+let createCircuitBreaker;
 try {
   ({ env } = await import("./config/env.js"));
   // Validates aliases, fallback chains and prices; a typo there stops startup here.
@@ -20,13 +21,15 @@ try {
   ({ createKeyLookup } = await import("./modules/keys/keyLookup.js"));
   ({ attachWebSocket } = await import("./transports/websocket.js"));
   ({ createUsageWriter } = await import("./modules/usage/usageWriter.js"));
+  ({ createCircuitBreaker } = await import("./gateway/circuitBreaker.js"));
 } catch (err) {
   console.error(err.message);
   process.exit(1);
 }
 
 // One gateway and one key lookup for both transports, so HTTP and WebSocket behave alike.
-const gateway = createGateway();
+// The circuit breaker keeps its state in Redis, so every instance skips the same providers.
+const gateway = createGateway({ breaker: createCircuitBreaker({ redis, logger }) });
 const keys = createKeysRepository();
 const keyLookup = createKeyLookup({ keys, redis });
 // Every chat on either transport writes one usage row, in batches, off the request path.

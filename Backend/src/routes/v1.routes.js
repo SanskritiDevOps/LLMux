@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { listModels as defaultListModels } from "../gateway/catalog.js";
+import { createResponseCache, withResponseCache } from "../gateway/responseCache.js";
 import { ChatRequestSchema } from "../gateway/schemas.js";
 import { requireApiKey } from "../middleware/apiKeyAuth.js";
 import { toGatewayError } from "../middleware/errorHandler.js";
@@ -37,8 +38,10 @@ export const EXPOSED_HEADERS = Object.freeze([REQUEST_ID_HEADER, ...Object.value
  *   redis?: import("ioredis").Redis,
  *   keyLookup?: ReturnType<typeof createKeyLookup>,
  *   usage?: { record: (row: object) => void },
+ *   responseCache?: ReturnType<typeof createResponseCache>,
  * }} deps  keyLookup defaults to a Redis-cached lookup over `keys`; usage is the usage
- *   writer (server.js passes the real one; without it, rows are discarded)
+ *   writer (server.js passes the real one; without it, rows are discarded); responseCache
+ *   defaults to a Redis cache on the same `redis`
  */
 export function v1Routes({
   gateway,
@@ -47,8 +50,11 @@ export function v1Routes({
   redis,
   keyLookup = createKeyLookup({ keys, redis }),
   usage = discardUsage,
+  responseCache = createResponseCache({ redis }),
 }) {
   const router = Router();
+  // JSON chats check the response cache first; streams go straight to the gateway.
+  const chatGateway = withResponseCache(gateway, { cache: responseCache });
 
   // Before everything else, so no route here can be reached without a valid key.
   router.use(requireApiKey({ lookup: keyLookup }));
@@ -79,6 +85,8 @@ export function v1Routes({
       signal: controller.signal,
       log: req.log,
       onFinish: tracker.onFinish,
+      // Cached answers are per account, never shared between customers.
+      cacheScope: req.apiKey.userId,
     };
 
     let outcome = {};
@@ -87,7 +95,7 @@ export function v1Routes({
         outcome = await streamToSse(gateway.stream(request, context), res, req.log);
         return;
       }
-      const { response, meta } = await gateway.chat(request, context);
+      const { response, meta } = await chatGateway.chat(request, context);
       res.set({
         [LLMUX_HEADERS.provider]: response.provider,
         [LLMUX_HEADERS.providerModel]: response.providerModel,

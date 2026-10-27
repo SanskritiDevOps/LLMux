@@ -110,6 +110,8 @@ export function attachWebSocket(
     let log = logger.child({ connId: `ws_${randomBytes(8).toString("hex")}` });
     let apiKey = null;
     let requestsStarted = 0;
+    // Chats that stopped on their own because the socket was already closing.
+    let stoppedBySocket = 0;
     /** requestId → AbortController of each chat still in progress */
     const inFlight = new Map();
 
@@ -226,9 +228,12 @@ export function attachWebSocket(
           onFinish: tracker.onFinish,
         });
         for await (const event of events) {
-          // false: the socket closed, which has already aborted the provider call.
+          // false: the socket is closing or closed. Stopping the loop cancels the provider
+          // call. This can happen before the socket's "close" event, so the chat is counted
+          // here for that event's log line.
           if (!(await send({ ...event, requestId }))) {
             outcome = { cancelled: true };
+            stoppedBySocket += 1;
             break;
           }
         }
@@ -306,7 +311,9 @@ export function attachWebSocket(
 
     ws.on("close", (code) => {
       clearTimeout(authTimer);
-      const cancelled = inFlight.size;
+      // Those still running now, plus those that already stopped because the socket was
+      // closing: both were cut off by the client going away.
+      const cancelled = inFlight.size + stoppedBySocket;
       for (const controller of inFlight.values()) controller.abort(SOCKET_CLOSED);
       log.info(
         {

@@ -37,6 +37,8 @@ describe.runIf(realDependencies)("usage logs written to real Postgres", () => {
       flushIntervalMs: 60_000,
     });
     const gateway = createGateway({
+      // One attempt per provider: this file checks what is stored, not the retries.
+      maxRetries: 0,
       enabledProviders: new Set(["gemini", "ollama"]),
       providerSettings: {
         gemini: { apiKey: "mock-gemini-key", baseUrl: mock.url },
@@ -94,7 +96,8 @@ describe.runIf(realDependencies)("usage logs written to real Postgres", () => {
   it("stores failed requests too", async () => {
     mock.behave("gemini", { type: "status", status: 503, body: {} });
 
-    await chat({ model: "fast" });
+    // A direct call has no fallback, so Gemini's own error is what gets stored.
+    await chat({ model: "gemini:gemini-3.5-flash-lite" });
     await chat({ model: "fastest" });
     await usage.close();
 

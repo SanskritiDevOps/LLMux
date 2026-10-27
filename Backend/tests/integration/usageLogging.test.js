@@ -47,7 +47,9 @@ beforeEach(async () => {
       gemini: { apiKey: "mock-gemini-key", baseUrl: mock.url },
       ollama: { baseUrl: mock.url },
     },
-    timeoutMs: 1000,
+    // Generous, so a busy machine never times out a normal mock answer (and falls back to
+    // another provider mid-test). This suite isn't about timeouts.
+    timeoutMs: 5000,
     // Retries and fallback have their own suite (fallback.test.js).
     maxRetries: 0,
   });

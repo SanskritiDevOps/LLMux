@@ -25,21 +25,27 @@ afterAll(async () => {
   await mock.close();
 });
 
-beforeEach(() => {
-  mock.reset();
-  logs = captureLogs();
+/** The app under test; only the stall test needs a short idle limit. */
+function makeApp(timeoutMs) {
   const gateway = createGateway({
     enabledProviders: new Set(["gemini", "ollama"]),
     providerSettings: {
       gemini: { apiKey: "mock-gemini-key", baseUrl: mock.url },
       ollama: { baseUrl: mock.url },
     },
-    // An idle limit between chunks: generous for normal streams, short for the stall test.
-    timeoutMs: 1000,
+    // An idle limit between chunks. Generous by default, so a busy machine never times out
+    // a normal stream (which would then fall back to another provider mid-test).
+    timeoutMs,
     // Retries and fallback have their own suite (fallback.test.js).
     maxRetries: 0,
   });
-  app = createApp({ logger: logs.logger, gateway, keys, redis: fakeRedis() });
+  return createApp({ logger: logs.logger, gateway, keys, redis: fakeRedis() });
+}
+
+beforeEach(() => {
+  mock.reset();
+  logs = captureLogs();
+  app = makeApp(5000);
 });
 
 const body = (overrides) => ({
@@ -153,6 +159,7 @@ describe("POST /v1/chat with stream: true", () => {
   });
 
   it("ends with a TIMEOUT error event when the provider goes silent mid-stream", async () => {
+    app = makeApp(1000);
     mock.behave("ollama", { type: "stream", chunks: ["Amber"], then: "stall" });
 
     const res = await streamChat({ model: "local" });
