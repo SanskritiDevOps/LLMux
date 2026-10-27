@@ -10,6 +10,10 @@ import express from "express";
  *   { type: "hang" }                 accept the request and never answer
  *   { type: "drop" }                 destroy the connection without answering
  *
+ * A list of behaviors is used one per request, in order, and the last one repeats: for
+ * example [{ type: "status", status: 503 }, { type: "ok" }] fails once, then answers.
+ * A "status" behavior may also send `headers`, such as Retry-After.
+ *
  * Streaming requests (Gemini's :streamGenerateContent, Ollama's stream: true) get the
  * answer in the provider's stream format (SSE or NDJSON). "ok" streams `text` word by
  * word, and one more behavior controls the stream in detail:
@@ -52,14 +56,18 @@ export async function startMockProvider() {
       if (!res.writableFinished) state.aborted += 1;
     });
 
-    const behavior = behaviors[provider];
+    const queue = behaviors[provider];
+    const behavior = Array.isArray(queue) ? (queue.length > 1 ? queue.shift() : queue[0]) : queue;
     if (behavior.type === "hang") return;
     if (behavior.type === "drop") {
       req.socket.destroy();
       return;
     }
     if (behavior.type === "status") {
-      res.status(behavior.status).json(behavior.body ?? {});
+      res
+        .status(behavior.status)
+        .set(behavior.headers ?? {})
+        .json(behavior.body ?? {});
       return;
     }
 
@@ -89,9 +97,9 @@ export async function startMockProvider() {
     get aborted() {
       return state.aborted;
     },
-    /** @param {"gemini" | "ollama"} provider */
+    /** @param {"gemini" | "ollama"} provider  @param {object | object[]} behavior */
     behave(provider, behavior) {
-      behaviors[provider] = behavior;
+      behaviors[provider] = Array.isArray(behavior) ? [...behavior] : behavior;
     },
     reset() {
       behaviors.gemini = { type: "ok" };

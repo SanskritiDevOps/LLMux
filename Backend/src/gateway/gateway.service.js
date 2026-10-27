@@ -5,11 +5,18 @@ import { providerRegistry } from "../providers/index.js";
 import { readStreamPayloads } from "../providers/streamReader.js";
 import { GatewayError } from "../utils/errors.js";
 import { costBreakdown, microUsdToUsd } from "./cost.js";
+import { createDeadline } from "./deadline.js";
+import { classifyError } from "./errorPolicy.js";
 import { getProviderSettings } from "./providerSettings.js";
+import { backoffDelay, retryAfterMs, sleep } from "./retry.js";
 import { getEnabledProviders, maxTokensFor, resolveModel } from "./router.js";
 
 // Provider error bodies can be large HTML pages; logs keep the first part only.
 const MAX_LOGGED_BODY_CHARS = 1000;
+
+// When another target could answer right away, waiting longer than this for the same
+// provider (a long Retry-After, say) isn't worth it: move on to the next target instead.
+export const MAX_WAIT_BEFORE_FALLBACK_MS = 2_000;
 
 function truncateForLog(body) {
   const text = typeof body === "string" ? body : JSON.stringify(body);
@@ -39,13 +46,14 @@ const NO_USAGE = Object.freeze({ inputTokens: 0, outputTokens: 0, totalTokens: 0
  *
  * @typedef {Object} CallSummary
  * @property {string | null} alias  null for a direct provider:model call, or an unknown model
- * @property {{ provider: string, model: string } | null} target  null if no provider was chosen
+ * @property {{ provider: string, model: string } | null} target  the target that answered,
+ *   or the last one tried; null if no provider was tried
  * @property {{ inputTokens: number, outputTokens: number, totalTokens: number }} usage
  * @property {boolean} usageEstimated
  * @property {number} costMicroUsd
  * @property {number} savedMicroUsd
- * @property {number} attempts
- * @property {boolean} fallbackUsed
+ * @property {number} attempts  provider calls made, retries and fallbacks included
+ * @property {boolean} fallbackUsed  the target in `target` isn't the first in the chain
  * @property {boolean} cached
  * @property {number | null} providerLatencyMs  until the answer (JSON) or the headers (stream)
  * @property {number | null} timeToFirstTokenMs  streams only
@@ -58,7 +66,7 @@ function emptySummary() {
     usageEstimated: false,
     costMicroUsd: 0,
     savedMicroUsd: 0,
-    attempts: 1,
+    attempts: 0,
     fallbackUsed: false,
     cached: false,
     providerLatencyMs: null,
@@ -76,10 +84,12 @@ function finalUsage(request, progress) {
 /**
  * The core of LLMux: resolve the model, translate with the adapter, call the provider,
  * translate back, attach cost. It knows no provider format (only adapters do) and no
- * transport (routes turn its result into HTTP).
+ * transport (routes turn its result into HTTP, SSE or WebSocket messages).
  *
- * Today it calls the first configured target only. Retries and fallback down the chain
- * arrive on Day 10. Every dependency can be swapped in tests.
+ * Every call walks the alias's fallback chain (README section 14): each target is tried,
+ * retried with backoff when the error allows it, and the next target is tried when it
+ * doesn't answer, all inside one overall deadline. Every dependency, including the wait
+ * between retries, can be swapped in tests.
  */
 export function createGateway({
   registry = providerRegistry,
@@ -87,24 +97,29 @@ export function createGateway({
   enabledProviders = getEnabledProviders(env),
   providerSettings = getProviderSettings(env),
   timeoutMs = env.REQUEST_TIMEOUT_MS,
+  deadlineMs = env.REQUEST_DEADLINE_MS,
+  maxRetries = env.MAX_RETRIES,
   send = sendRequest,
   openStream = openProviderStream,
+  wait = sleep,
+  random = Math.random,
 } = {}) {
-  /** Resolves the model and builds the provider request; shared by chat and stream. */
-  function prepare(request) {
-    const resolved = resolveModel(request.model, { config, enabledProviders });
-    const target = resolved.targets[0];
+  /** Builds one target's provider request. */
+  function build(request, target, resolved) {
     const adapter = registry.get(target.provider);
     const providerRequest = adapter.buildRequest(request, target, {
       ...providerSettings[target.provider],
       maxTokens: maxTokensFor(target, request.maxTokens, resolved.defaultMaxTokens),
     });
-    return { resolved, target, adapter, providerRequest };
+    return { adapter, providerRequest };
   }
 
   /** A non-2xx from the provider: log its raw body, return the unified error to throw. */
   function providerFailure(adapter, result, callLog, log) {
     const error = adapter.mapError(result);
+    // A 429 or 503 may say how long to wait before asking again.
+    const after = retryAfterMs(result.headers);
+    if (after !== null) error.retryAfterMs = after;
     // The raw body goes to the logs for debugging; the client only sees error.message.
     log.warn(
       { ...callLog, code: error.code, providerBody: truncateForLog(result.body) },
@@ -113,10 +128,90 @@ export function createGateway({
     return error;
   }
 
-  /** Records which provider a request went to, as soon as it is known. */
-  function chosen(summary, resolved, target) {
+  /**
+   * Runs `attempt` down the alias's chain until one succeeds (README section 14):
+   *
+   *   - each target gets up to 1 + maxRetries attempts, while its errors are retryable
+   *   - between retries: backoffDelay() (about 250 ms, then 500 ms), or the provider's
+   *     Retry-After if that is longer
+   *   - a wait that would pass the deadline, or that is longer than
+   *     MAX_WAIT_BEFORE_FALLBACK_MS while another target could answer now, moves on to the
+   *     next target instead
+   *   - an error that allows no fallback (a 400, a bug) is thrown at once
+   *   - the deadline caps everything: each attempt's timeout is cut to the time left
+   *
+   * `summary` is kept up to date (attempts, fallbackUsed, the target being tried), so the
+   * usage log is right whichever way the call ends.
+   *
+   * @template T
+   * @param {(attempt: { target: object, resolved: object, attempt: number,
+   *   fallbackUsed: boolean, timeoutMs: number }) => Promise<T>} attempt
+   * @returns {Promise<T>}
+   */
+  async function withFallback(request, { signal, log, summary, deadline }, attempt) {
+    const resolved = resolveModel(request.model, { config, enabledProviders });
     summary.alias = resolved.alias;
-    summary.target = { provider: target.provider, model: target.model };
+
+    let attempts = 0;
+    let lastError;
+    for (const [index, target] of resolved.targets.entries()) {
+      const hasNext = index < resolved.targets.length - 1;
+      for (let retry = 0; retry <= maxRetries; retry += 1) {
+        if (retry > 0) {
+          const pause = Math.max(backoffDelay(retry, { random }), lastError.retryAfterMs ?? 0);
+          if (!deadline.allowsWait(pause) || (hasNext && pause > MAX_WAIT_BEFORE_FALLBACK_MS)) {
+            break;
+          }
+          log.info({ provider: target.provider, retry, waitMs: pause }, "Retrying provider");
+          await wait(pause, signal);
+        }
+        if (deadline.expired()) throw deadline.error({ attempts, lastError });
+
+        attempts += 1;
+        Object.assign(summary, {
+          attempts,
+          fallbackUsed: index > 0,
+          target: { provider: target.provider, model: target.model },
+        });
+        try {
+          return await attempt({
+            target,
+            resolved,
+            attempt: attempts,
+            fallbackUsed: index > 0,
+            timeoutMs: deadline.timeoutFor(timeoutMs),
+          });
+        } catch (err) {
+          // The client left: not the provider's fault, so no retry and no fallback.
+          if (signal?.aborted) throw err;
+          lastError = err;
+          const decision = classifyError(err);
+          log.warn(
+            {
+              provider: target.provider,
+              model: target.model,
+              attempt: attempts,
+              code: err.code,
+              retry: decision.retry,
+              fallback: decision.fallback && hasNext,
+            },
+            "Provider attempt failed",
+          );
+          if (decision.alert) {
+            log.error(
+              { provider: target.provider },
+              "Provider rejected LLMux's credentials; check its API key",
+            );
+          }
+          if (!decision.fallback) throw err;
+          if (!decision.retry) break;
+        }
+      }
+    }
+    // Every target failed. If time ran out along the way, say so; otherwise the last
+    // provider's own error is the most useful thing to report.
+    if (deadline.expired()) throw deadline.error({ attempts, lastError });
+    throw lastError;
   }
 
   /**
@@ -134,23 +229,38 @@ export function createGateway({
       throw new TypeError("gateway.chat() does not stream; use gateway.stream()");
     }
 
+    const started = performance.now();
     const summary = emptySummary();
+    const deadline = createDeadline(deadlineMs);
     try {
-      return await answer(request, { requestId, signal, log, summary });
+      return await withFallback(request, { signal, log, summary, deadline }, (attempt) =>
+        answer(request, { requestId, signal, log, summary, started }, attempt),
+      );
     } finally {
       onFinish?.(summary);
     }
   }
 
-  /** The body of chat(); fills in `summary` as it goes. */
-  async function answer(request, { requestId, signal, log, summary }) {
-    const started = performance.now();
-    const { resolved, target, adapter, providerRequest } = prepare(request);
-    chosen(summary, resolved, target);
+  /** One attempt of chat(): call one target, translate its answer. */
+  async function answer(
+    request,
+    { requestId, signal, log, summary, started },
+    { target, resolved, attempt, fallbackUsed, timeoutMs: attemptTimeoutMs },
+  ) {
+    const { adapter, providerRequest } = build(request, target, resolved);
 
-    const result = await send(providerRequest, { provider: target.provider, timeoutMs, signal });
+    const result = await send(providerRequest, {
+      provider: target.provider,
+      timeoutMs: attemptTimeoutMs,
+      signal,
+    });
     summary.providerLatencyMs = result.durationMs;
-    const callLog = { provider: target.provider, model: target.model, status: result.status };
+    const callLog = {
+      provider: target.provider,
+      model: target.model,
+      status: result.status,
+      attempt,
+    };
 
     if (!result.ok) {
       throw providerFailure(adapter, result, callLog, log);
@@ -169,6 +279,7 @@ export function createGateway({
       throw error;
     }
     const { costMicroUsd, savedMicroUsd } = costBreakdown(parsed.usage, target.pricing);
+    // From the start of the call, so retries and fallbacks are included.
     const latencyMs = Math.round(performance.now() - started);
     Object.assign(summary, {
       usage: parsed.usage,
@@ -180,6 +291,7 @@ export function createGateway({
     log.info(
       {
         ...callLog,
+        fallbackUsed,
         providerLatencyMs: result.durationMs,
         latencyMs,
         inputTokens: parsed.usage.inputTokens,
@@ -201,13 +313,13 @@ export function createGateway({
         costUsd: microUsdToUsd(costMicroUsd),
         latencyMs,
         cached: false,
-        fallbackUsed: false,
+        fallbackUsed,
       },
-      // For usage logging (Day 9) and response headers: not part of the client contract.
+      // For the X-LLMux-* headers: not part of the client contract.
       meta: {
         alias: resolved.alias,
         target,
-        attempts: 1,
+        attempts: attempt,
         providerLatencyMs: result.durationMs,
         usageEstimated: parsed.usageEstimated,
         costMicroUsd,
@@ -219,16 +331,21 @@ export function createGateway({
   /**
    * Streams one request as unified events: start, then delta…, then end.
    *
-   * Nothing is yielded until the provider has accepted the stream (a 2xx with headers), so
-   * a failure up to that point (unknown model, provider error, timeout) is thrown before
-   * the first event and the route can still answer with a normal HTTP error. A failure
-   * after `start` is thrown mid-iteration; the route turns it into an `error` event,
-   * because the status line has already been sent. Stopping the iteration early (the
-   * client left) cancels the provider request.
+   * A stream commits to a provider at its first token (README section 14: fall back "only
+   * before the first token is sent"). Until then, an error, a refusal, a timeout or a
+   * stream that fails before saying anything is retried or falls back exactly like
+   * chat(), and the client sees none of it. So `start` is yielded only once the first
+   * token has arrived (or the provider finished without any text), naming the provider
+   * that is really answering.
    *
-   * The usage summary passed to `context.onFinish` covers streams that end early too: once
-   * the provider has accepted the stream, the tokens used so far are counted (estimated
-   * when the provider hadn't sent figures yet), because the provider bills them anyway.
+   * If every target fails, the error is thrown before the first event, so the route can
+   * still answer with a normal HTTP error. A failure after `start` is thrown mid-iteration;
+   * the route turns it into an `error` event. Stopping the iteration early (the client
+   * left) cancels the provider request.
+   *
+   * The usage summary passed to `context.onFinish` covers streams that end early too:
+   * once a stream has committed, the tokens used so far are counted (estimated when the
+   * provider hadn't sent figures yet), because the provider bills them anyway.
    *
    * @param {import("../providers/adapter.js").UnifiedRequest} request  already validated
    * @param {CallContext} context
@@ -237,57 +354,120 @@ export function createGateway({
   async function* stream(request, { requestId, signal, log, onFinish }) {
     const started = performance.now();
     const summary = emptySummary();
-    // Shared with relay(), so `finally` can see how far the stream got.
-    const progress = {
-      accepted: false,
-      usage: undefined,
-      outputChars: 0,
-      timeToFirstTokenMs: null,
-    };
-    let target;
-    // Aborted in `finally`, so the provider connection closes however the iteration ends,
-    // even if the consumer stops right after `start`, before any chunk was read.
-    const cancel = new AbortController();
+    const deadline = createDeadline(deadlineMs);
+    let committed = null;
     try {
-      const prepared = prepare({ ...request, stream: true });
-      ({ target } = prepared);
-      const { resolved, adapter, providerRequest } = prepared;
-      chosen(summary, resolved, target);
-      if (!adapter.parseStreamChunk) {
-        throw new GatewayError(
-          "INVALID_REQUEST",
-          `${target.provider} does not support streaming yet; send stream: false`,
-        );
-      }
+      committed = await withFallback(request, { signal, log, summary, deadline }, (attempt) =>
+        openUntilFirstToken(request, { signal, log, started }, attempt),
+      );
+      const { target, events, first, progress, callLog } = committed;
+      summary.providerLatencyMs = committed.durationMs;
 
-      const result = await openStream(providerRequest, {
-        provider: target.provider,
-        timeoutMs,
-        signal: signal ? AbortSignal.any([signal, cancel.signal]) : cancel.signal,
-      });
-      summary.providerLatencyMs = result.durationMs;
-      const callLog = { provider: target.provider, model: target.model, status: result.status };
-      if (!result.ok) {
-        throw providerFailure(adapter, result, callLog, log);
-      }
-
-      progress.accepted = true;
       yield { type: "start", id: requestId, model: request.model, provider: target.provider };
-      yield* relay(request, { started, target, adapter, result, callLog, log, progress });
+      if (!first.done) yield first.value;
+      for await (const event of events) yield event;
+
+      const { usage, usageEstimated } = finalUsage(request, progress);
+      const { costMicroUsd } = costBreakdown(usage, target.pricing);
+      const latencyMs = Math.round(performance.now() - started);
+      log.info(
+        {
+          ...callLog,
+          streamed: true,
+          fallbackUsed: summary.fallbackUsed,
+          latencyMs,
+          timeToFirstTokenMs: progress.timeToFirstTokenMs,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          usageEstimated,
+          costMicroUsd,
+        },
+        "Provider stream completed",
+      );
+
+      yield {
+        type: "end",
+        finishReason: progress.finishReason,
+        usage,
+        ...(usageEstimated && { usageEstimated: true }),
+        latencyMs,
+      };
     } finally {
-      cancel.abort();
-      if (progress.accepted) {
-        const { usage, usageEstimated } = finalUsage(request, progress);
-        Object.assign(summary, { usage, usageEstimated }, costBreakdown(usage, target.pricing));
-        summary.timeToFirstTokenMs = progress.timeToFirstTokenMs;
+      if (committed) {
+        // Closes the provider connection however the iteration ended.
+        committed.cancel.abort();
+        const { usage, usageEstimated } = finalUsage(request, committed.progress);
+        Object.assign(
+          summary,
+          { usage, usageEstimated },
+          costBreakdown(usage, committed.target.pricing),
+        );
+        summary.timeToFirstTokenMs = committed.progress.timeToFirstTokenMs;
       }
       onFinish?.(summary);
     }
   }
 
-  /** The body of stream(): provider payloads → delta events, then the final end event. */
-  async function* relay(request, { started, target, adapter, result, callLog, log, progress }) {
-    let finishReason;
+  /**
+   * One attempt of stream(): open the target's stream and read it up to its first token.
+   * Anything that goes wrong in here is still a failed attempt, so withFallback() can
+   * retry or move on, and this attempt's connection is closed.
+   */
+  async function openUntilFirstToken(
+    request,
+    { signal, log, started },
+    { target, resolved, attempt, timeoutMs: attemptTimeoutMs },
+  ) {
+    const { adapter, providerRequest } = build({ ...request, stream: true }, target, resolved);
+    if (!adapter.parseStreamChunk) {
+      // Another provider in the chain may stream, so this is a provider limitation, not a
+      // bad request.
+      throw new GatewayError("PROVIDER_ERROR", `${target.provider} does not support streaming`, {
+        provider: target.provider,
+        retryable: false,
+      });
+    }
+
+    // Aborted if this attempt fails here, and by stream() when the stream ends.
+    const cancel = new AbortController();
+    try {
+      const result = await openStream(providerRequest, {
+        provider: target.provider,
+        // An idle limit: it covers the wait for the headers and for each chunk.
+        timeoutMs: attemptTimeoutMs,
+        signal: signal ? AbortSignal.any([signal, cancel.signal]) : cancel.signal,
+      });
+      const callLog = {
+        provider: target.provider,
+        model: target.model,
+        status: result.status,
+        attempt,
+      };
+      if (!result.ok) {
+        throw providerFailure(adapter, result, callLog, log);
+      }
+
+      const progress = {
+        usage: undefined,
+        outputChars: 0,
+        timeToFirstTokenMs: null,
+        finishReason: null,
+      };
+      const events = providerEvents({ started, target, adapter, result, callLog, log, progress });
+      const first = await events.next();
+      return { target, events, first, progress, callLog, cancel, durationMs: result.durationMs };
+    } catch (err) {
+      cancel.abort();
+      throw err;
+    }
+  }
+
+  /**
+   * Provider payloads → unified delta events. Usage and the finish reason are kept in
+   * `progress`. Throws if the provider fails mid-stream, or if the stream ends without the
+   * provider saying the answer was complete.
+   */
+  async function* providerEvents({ started, target, adapter, result, callLog, log, progress }) {
     for await (const payload of readStreamPayloads(result.chunks, adapter.streamFormat)) {
       let events;
       try {
@@ -308,12 +488,12 @@ export function createGateway({
         } else if (event.type === "usage") {
           progress.usage = event.usage;
         } else if (event.type === "finish") {
-          finishReason = event.finishReason;
+          progress.finishReason = event.finishReason;
         }
       }
     }
 
-    if (!finishReason) {
+    if (!progress.finishReason) {
       // The connection closed cleanly but the provider never said the answer was done,
       // so the client may have a truncated answer.
       log.warn(callLog, "Provider stream ended without finishing");
@@ -323,32 +503,6 @@ export function createGateway({
         { provider: target.provider, retryable: true },
       );
     }
-
-    const { usage, usageEstimated } = finalUsage(request, progress);
-    const { costMicroUsd } = costBreakdown(usage, target.pricing);
-    const latencyMs = Math.round(performance.now() - started);
-
-    log.info(
-      {
-        ...callLog,
-        streamed: true,
-        latencyMs,
-        timeToFirstTokenMs: progress.timeToFirstTokenMs,
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        usageEstimated,
-        costMicroUsd,
-      },
-      "Provider stream completed",
-    );
-
-    yield {
-      type: "end",
-      finishReason,
-      usage,
-      ...(usageEstimated && { usageEstimated: true }),
-      latencyMs,
-    };
   }
 
   return { chat, stream };

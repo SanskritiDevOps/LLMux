@@ -33,6 +33,7 @@ function setup({ reply, streamReply }) {
     enabledProviders: new Set(["gemini", "ollama"]),
     providerSettings: settings,
     send: async () => reply,
+    wait: async () => {},
     openStream: async () => streamReply,
   });
   const context = (signal) => ({
@@ -90,7 +91,9 @@ describe("gateway.chat summary", () => {
       reply: { ok: false, status: 429, body: {}, durationMs: 5 },
     });
 
-    await expect(chat({ model: "fast" })).rejects.toBeInstanceOf(GatewayError);
+    await expect(chat({ model: "gemini:gemini-3.5-flash-lite" })).rejects.toBeInstanceOf(
+      GatewayError,
+    );
 
     expect(summaries).toHaveLength(1);
     expect(summaries[0]).toMatchObject({
@@ -166,7 +169,7 @@ describe("gateway.stream summary", () => {
       streamReply: { ok: false, status: 503, body: {}, durationMs: 5 },
     });
 
-    await expect(stream({ model: "fast" }).next()).rejects.toMatchObject({
+    await expect(stream({ model: "gemini:gemini-3.5-flash-lite" }).next()).rejects.toMatchObject({
       code: "PROVIDER_UNAVAILABLE",
     });
 

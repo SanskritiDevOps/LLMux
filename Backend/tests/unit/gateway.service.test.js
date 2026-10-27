@@ -24,6 +24,8 @@ function setup({ enabled = ["gemini", "ollama"], reply }) {
     enabledProviders: new Set(enabled),
     providerSettings: settings,
     timeoutMs: 1234,
+    // Retries wait without delay here; their timing is tested in retry.test.js.
+    wait: async () => {},
     send,
   });
   const chat = (body, signal) =>
@@ -116,7 +118,10 @@ describe("gateway.chat", () => {
 
   it("maps a provider error with the adapter and logs the raw body without exposing it", async () => {
     const body = fixture("gemini", "error-rate-limited-429");
-    const { chat, logs } = setup({ reply: { ok: false, status: 429, body, durationMs: 5 } });
+    const { chat, logs } = setup({
+      enabled: ["gemini"],
+      reply: { ok: false, status: 429, body, durationMs: 5 },
+    });
 
     const error = await chat({ model: "fast" }).catch((err) => err);
 
@@ -145,7 +150,10 @@ describe("gateway.chat", () => {
   });
 
   it("logs the raw body when a 200 response cannot be parsed", async () => {
-    const { chat, logs } = setup({ reply: ok({ unexpected: "new-provider-format" }) });
+    const { chat, logs } = setup({
+      enabled: ["gemini"],
+      reply: ok({ unexpected: "new-provider-format" }),
+    });
 
     const error = await chat({ model: "fast" }).catch((err) => err);
 

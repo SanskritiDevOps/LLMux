@@ -81,6 +81,8 @@ beforeEach(async () => {
       ollama: { baseUrl: mock.url },
     },
     timeoutMs: 1000,
+    // Retries and fallback have their own suite (fallback.test.js).
+    maxRetries: 0,
   });
   await startServer();
 });
@@ -314,7 +316,7 @@ describe("chat", () => {
   it("reports provider errors before the stream as an error for that request only", async () => {
     mock.behave("gemini", { type: "status", status: 429, body: { error: { code: 429 } } });
     const client = await authenticated();
-    client.send(chat("c1"));
+    client.send(chat("c1", { model: "gemini:gemini-3.5-flash-lite" }));
 
     expect(await client.next({ type: "error", requestId: "c1" })).toEqual({
       type: "error",

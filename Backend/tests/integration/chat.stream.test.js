@@ -36,6 +36,8 @@ beforeEach(() => {
     },
     // An idle limit between chunks: generous for normal streams, short for the stall test.
     timeoutMs: 1000,
+    // Retries and fallback have their own suite (fallback.test.js).
+    maxRetries: 0,
   });
   app = createApp({ logger: logs.logger, gateway, keys, redis: fakeRedis() });
 });
@@ -112,7 +114,7 @@ describe("POST /v1/chat with stream: true", () => {
   it("answers with a normal JSON error when the provider fails before streaming", async () => {
     mock.behave("gemini", { type: "status", status: 429, body: { error: { code: 429 } } });
 
-    const res = await streamChat({ model: "fast" });
+    const res = await streamChat({ model: "gemini:gemini-3.5-flash-lite" });
 
     expect(res.status).toBe(503);
     expect(res.headers["content-type"]).toContain("application/json");

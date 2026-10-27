@@ -35,12 +35,18 @@ beforeEach(() => {
       gemini: { apiKey: "mock-gemini-key", baseUrl: mock.url },
       ollama: { baseUrl: mock.url },
     },
+    // These tests are about one provider call; retries and fallback have their own suite
+    // (fallback.test.js).
+    maxRetries: 0,
     // Long enough that a normal mock answer never times out on a busy machine, short enough
     // that the hang test stays quick.
     timeoutMs: 1000,
   });
   app = createApp({ logger: logs.logger, gateway, keys, redis: fakeRedis() });
 });
+
+// A direct call has no fallback, so the provider's own error reaches the client.
+const GEMINI_ONLY = "gemini:gemini-3.5-flash-lite";
 
 const chat = (body) =>
   request(app)
@@ -109,7 +115,7 @@ describe("POST /v1/chat end to end", () => {
       body: { error: { code: "internal", message: "secret upstream detail: db-7.internal" } },
     });
 
-    const res = await chat({ model: "fast" });
+    const res = await chat({ model: GEMINI_ONLY });
 
     expect(res.status).toBe(status);
     expect(res.body.error).toMatchObject({ code, retryable, provider: "gemini" });
@@ -123,7 +129,7 @@ describe("POST /v1/chat end to end", () => {
       body: { error: { message: "boom-detail" } },
     });
 
-    await chat({ model: "fast" });
+    await chat({ model: GEMINI_ONLY });
 
     const warning = logs.lines.find((line) => line.msg === "Provider returned an error");
     expect(warning.providerBody).toContain("boom-detail");
@@ -133,7 +139,7 @@ describe("POST /v1/chat end to end", () => {
     mock.behave("gemini", { type: "hang" });
 
     const started = Date.now();
-    const res = await chat({ model: "fast" });
+    const res = await chat({ model: GEMINI_ONLY });
 
     expect(res.status).toBe(504);
     expect(res.body.error).toMatchObject({ code: "TIMEOUT", provider: "gemini", retryable: true });
@@ -143,7 +149,7 @@ describe("POST /v1/chat end to end", () => {
   it("reports a dropped connection as 503 PROVIDER_UNAVAILABLE", async () => {
     mock.behave("gemini", { type: "drop" });
 
-    const res = await chat({ model: "fast" });
+    const res = await chat({ model: GEMINI_ONLY });
 
     expect(res.status).toBe(503);
     expect(res.body.error.code).toBe("PROVIDER_UNAVAILABLE");

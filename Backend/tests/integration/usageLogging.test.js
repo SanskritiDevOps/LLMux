@@ -48,6 +48,8 @@ beforeEach(async () => {
       ollama: { baseUrl: mock.url },
     },
     timeoutMs: 1000,
+    // Retries and fallback have their own suite (fallback.test.js).
+    maxRetries: 0,
   });
   server = http.createServer(createApp({ logger, gateway, keys, redis, usage }));
   websocket = attachWebSocket(server, {
@@ -109,7 +111,7 @@ describe("usage rows for HTTP chats", () => {
   it("records a provider error with its code and provider, at no cost", async () => {
     mock.behave("gemini", { type: "status", status: 429, body: { error: { code: 429 } } });
 
-    const res = await chat({ model: "fast" });
+    const res = await chat({ model: "gemini:gemini-3.5-flash-lite" });
 
     expect(res.status).toBe(503);
     expect(await usage.rowFor(res.headers["x-request-id"])).toMatchObject({
