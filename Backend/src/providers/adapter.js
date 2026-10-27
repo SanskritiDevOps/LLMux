@@ -103,12 +103,17 @@ export function defineAdapter(adapter) {
  *   other 5xx    PROVIDER_ERROR         retry
  *   other 4xx    PROVIDER_ERROR         no retry, fallback
  *
+ * The provider's own status is kept as `providerStatus`, so the gateway can tell, for
+ * example, a rejected API key (401/403, worth an alert) from other provider errors.
+ *
  * @param {string} provider
  * @param {number} status
  */
 export function errorFromStatus(provider, status) {
   const make = (code, message, retryable) =>
-    new GatewayError(code, message, { provider, retryable });
+    Object.assign(new GatewayError(code, message, { provider, retryable }), {
+      providerStatus: status,
+    });
 
   if (status === 400) {
     return make("INVALID_REQUEST", `${provider} rejected the request as invalid`, false);
