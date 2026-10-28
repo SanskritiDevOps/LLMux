@@ -7,7 +7,7 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 // console is used here because the logger itself depends on a valid environment.
 let env, createApp, logger, prisma, redis;
 let createGateway, createKeysRepository, createKeyLookup, attachWebSocket, createUsageWriter;
-let createCircuitBreaker;
+let createCircuitBreaker, createTokenBucket;
 try {
   ({ env } = await import("./config/env.js"));
   // Validates aliases, fallback chains and prices; a typo there stops startup here.
@@ -22,6 +22,7 @@ try {
   ({ attachWebSocket } = await import("./transports/websocket.js"));
   ({ createUsageWriter } = await import("./modules/usage/usageWriter.js"));
   ({ createCircuitBreaker } = await import("./gateway/circuitBreaker.js"));
+  ({ createTokenBucket } = await import("./modules/ratelimit/tokenBucket.js"));
 } catch (err) {
   console.error(err.message);
   process.exit(1);
@@ -34,10 +35,12 @@ const keys = createKeysRepository();
 const keyLookup = createKeyLookup({ keys, redis });
 // Every chat on either transport writes one usage row, in batches, off the request path.
 const usage = createUsageWriter({ logger });
+// One rate limiter for both transports: a key's HTTP requests and WebSocket chats share a bucket.
+const limiter = createTokenBucket({ redis, logger });
 
 // A plain HTTP server (not app.listen) so the WebSocket server can share its port.
-const server = http.createServer(createApp({ logger, gateway, keys, redis, usage }));
-const websocket = attachWebSocket(server, { gateway, keyLookup, logger, usage });
+const server = http.createServer(createApp({ logger, gateway, keys, redis, usage, limiter }));
+const websocket = attachWebSocket(server, { gateway, keyLookup, logger, usage, limiter });
 
 server.on("error", (err) => {
   if (err.code === "EADDRINUSE") {

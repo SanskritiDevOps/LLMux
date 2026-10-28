@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { requireSession } from "../../middleware/jwtAuth.js";
 import { requireSameOrigin } from "../../middleware/originCheck.js";
+import { LOGIN_LIMIT_PER_MIN, rateLimitByIp } from "../../middleware/rateLimit.js";
 import { validate } from "../../middleware/validate.js";
+import { noRateLimit } from "../ratelimit/tokenBucket.js";
 import { LoginSchema, loginUser } from "./login.js";
 import { RegisterSchema, registerUser } from "./registration.js";
 import { SESSION_COOKIE, sessionCookieOptions, signSession } from "./tokens.js";
@@ -11,12 +13,15 @@ import { SESSION_COOKIE, sessionCookieOptions, signSession } from "./tokens.js";
  *
  *   POST /register  create an account and log in       → 201 { user } + session cookie
  *   POST /login     log in                              → 200 { user } + session cookie
+ *                   (at most LOGIN_LIMIT_PER_MIN tries a minute per IP, then 429)
  *   POST /logout    end the session in this browser     → 204, cookie cleared
  *   GET  /me        who is logged in                    → 200 { user }, or 401
  *
- * @param {{ users: ReturnType<typeof import("./users.repository.js").createUsersRepository> }} deps
+ * @param {{ users: ReturnType<typeof import("./users.repository.js").createUsersRepository>,
+ *   limiter?: ReturnType<typeof import("../ratelimit/tokenBucket.js").createTokenBucket> }} deps
+ *   without a limiter, logins aren't rate-limited
  */
-export function authRoutes({ users }) {
+export function authRoutes({ users, limiter = noRateLimit }) {
   const router = Router();
 
   // Every POST here changes session state, so none may be triggered from another site.
@@ -32,11 +37,16 @@ export function authRoutes({ users }) {
     res.status(201).json({ user });
   });
 
-  router.post("/login", validate({ body: LoginSchema }), async (req, res) => {
-    const user = await loginUser(req.validated.body, { users });
-    startSession(res, user);
-    res.json({ user });
-  });
+  router.post(
+    "/login",
+    rateLimitByIp({ limiter, name: "login", limit: LOGIN_LIMIT_PER_MIN }),
+    validate({ body: LoginSchema }),
+    async (req, res) => {
+      const user = await loginUser(req.validated.body, { users });
+      startSession(res, user);
+      res.json({ user });
+    },
+  );
 
   // A JWT cannot be revoked before it expires; logging out removes it from this browser.
   // That is the README's design (stateless sessions); a server-side denylist is Future scope.

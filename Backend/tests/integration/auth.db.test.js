@@ -1,6 +1,7 @@
 import request from "supertest";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/app.js";
+import { noRateLimit } from "../../src/modules/ratelimit/tokenBucket.js";
 import { createUsersRepository } from "../../src/modules/auth/users.repository.js";
 import { prisma, resetDatabase } from "../helpers/db.js";
 import { captureLogs } from "../helpers/captureLogs.js";
@@ -15,7 +16,13 @@ describe.runIf(realDependencies)("auth against a real database", () => {
 
   beforeEach(async () => {
     await resetDatabase();
-    app = createApp({ logger: captureLogs().logger, gateway: { chat: async () => ({}) } });
+    // These tests log in many times from one address; the login limit has its own tests,
+    // and a real-Redis bucket would carry over between runs.
+    app = createApp({
+      logger: captureLogs().logger,
+      gateway: { chat: async () => ({}) },
+      limiter: noRateLimit,
+    });
   });
 
   afterAll(async () => {

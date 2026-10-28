@@ -3,7 +3,9 @@ import { WebSocket, WebSocketServer } from "ws";
 import { env } from "../config/env.js";
 import { authenticateKey } from "../middleware/apiKeyAuth.js";
 import { toGatewayError } from "../middleware/errorHandler.js";
+import { keyBucket, limitFor, rateLimitError } from "../middleware/rateLimit.js";
 import { generateRequestId } from "../middleware/requestId.js";
+import { noRateLimit } from "../modules/ratelimit/tokenBucket.js";
 import { discardUsage, trackUsage } from "../modules/usage/usageRecorder.js";
 import { GatewayError } from "../utils/errors.js";
 import { errorMessage, parseClientMessage } from "./wsProtocol.js";
@@ -51,9 +53,11 @@ export function sizeToBytes(size) {
  *   keyLookup: ReturnType<typeof import("../modules/keys/keyLookup.js").createKeyLookup>,
  *   logger: import("pino").Logger,
  *   usage?: { record: (row: object) => void },
+ *   limiter?: ReturnType<typeof import("../modules/ratelimit/tokenBucket.js").createTokenBucket>,
  *   authTimeoutMs?: number, heartbeatMs?: number, maxInFlight?: number,
  * }} deps  the timings and limits can be lowered in tests; usage is the usage writer (each
- *   chat records one row with transport "ws"; without it, rows are discarded)
+ *   chat records one row with transport "ws"; without it, rows are discarded); limiter is
+ *   the token bucket shared with HTTP (without it, chats aren't rate-limited)
  * @returns {{ wss: WebSocketServer, close: () => Promise<void> }}
  */
 export function attachWebSocket(
@@ -66,6 +70,7 @@ export function attachWebSocket(
     heartbeatMs = HEARTBEAT_INTERVAL_MS,
     maxInFlight = MAX_IN_FLIGHT,
     usage = discardUsage,
+    limiter = noRateLimit,
   },
 ) {
   // A frame larger than this closes the socket (code 1009), like a 413 over HTTP.
@@ -202,8 +207,24 @@ export function attachWebSocket(
         return;
       }
 
+      // Reserved before the rate-limit check (which waits on Redis), so a second chat with
+      // this requestId can't slip in meanwhile.
       const controller = new AbortController();
       inFlight.set(requestId, controller);
+
+      // Each chat takes a token from the key's bucket, the same bucket as its HTTP requests.
+      const limit = await limiter.take(keyBucket(apiKey.id), {
+        limit: limitFor(apiKey),
+        log,
+      });
+      if (!limit.allowed || controller.signal.aborted) {
+        inFlight.delete(requestId);
+        if (!limit.allowed) {
+          log.info({ wsRequestId: requestId, limit: limit.limit }, "Rate limit reached");
+          send(errorMessage(rateLimitError(limit), requestId));
+        }
+        return;
+      }
       requestsStarted += 1;
       const id = generateRequestId();
       const chatLog = log.child({ reqId: id, wsRequestId: requestId });

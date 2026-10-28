@@ -11,6 +11,7 @@ import { requestId } from "./middleware/requestId.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
 import { createUsersRepository } from "./modules/auth/users.repository.js";
 import { createKeysRepository } from "./modules/keys/keys.repository.js";
+import { createTokenBucket } from "./modules/ratelimit/tokenBucket.js";
 import { keysRoutes } from "./modules/keys/keys.routes.js";
 import { systemRoutes } from "./routes/system.routes.js";
 import { EXPOSED_HEADERS, v1Routes } from "./routes/v1.routes.js";
@@ -34,6 +35,8 @@ const defaultChecks = { database: checkDatabase, redis: checkRedis };
  *   in-memory repository
  * @param {import("ioredis").Redis} [deps.redis] used for cached key lookups; tests pass an
  *   in-memory stand-in
+ * @param {ReturnType<typeof createTokenBucket>} [deps.limiter] rate limits for /v1 and logins;
+ *   a Redis token bucket by default (tests pass their own)
  * @param {{ record: (row: object) => void }} [deps.usage] the usage writer; server.js passes
  *   the real one, and without it usage rows are discarded (tests pass a fake to inspect them)
  * @param {(app: import("express").Express) => void} [deps.extraRoutes] tests register
@@ -47,6 +50,7 @@ export function createApp({
   keys = createKeysRepository(),
   redis = defaultRedis,
   usage,
+  limiter = createTokenBucket({ redis }),
   extraRoutes,
 } = {}) {
   const app = express();
@@ -66,8 +70,8 @@ export function createApp({
 
   app.use(systemRoutes(readinessChecks));
   // keys and redis are what /v1 uses to check gateway keys.
-  app.use("/v1", v1Routes({ gateway, keys, redis, usage }));
-  app.use("/api/auth", authRoutes({ users }));
+  app.use("/v1", v1Routes({ gateway, keys, redis, usage, limiter }));
+  app.use("/api/auth", authRoutes({ users, limiter }));
   app.use("/api/keys", keysRoutes({ users, keys, redis }));
 
   extraRoutes?.(app);

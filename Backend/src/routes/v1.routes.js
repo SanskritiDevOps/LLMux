@@ -4,9 +4,11 @@ import { createResponseCache, withResponseCache } from "../gateway/responseCache
 import { ChatRequestSchema } from "../gateway/schemas.js";
 import { requireApiKey } from "../middleware/apiKeyAuth.js";
 import { toGatewayError } from "../middleware/errorHandler.js";
+import { RATE_LIMIT_HEADERS, rateLimitByKey } from "../middleware/rateLimit.js";
 import { REQUEST_ID_HEADER } from "../middleware/requestId.js";
 import { validate } from "../middleware/validate.js";
 import { createKeyLookup } from "../modules/keys/keyLookup.js";
+import { createTokenBucket } from "../modules/ratelimit/tokenBucket.js";
 import { discardUsage, trackUsage } from "../modules/usage/usageRecorder.js";
 import { createSseWriter } from "../transports/sse.js";
 
@@ -25,7 +27,11 @@ export const LLMUX_HEADERS = Object.freeze({
 });
 
 /** Headers a browser app (the dashboard) may read; CORS hides all others. */
-export const EXPOSED_HEADERS = Object.freeze([REQUEST_ID_HEADER, ...Object.values(LLMUX_HEADERS)]);
+export const EXPOSED_HEADERS = Object.freeze([
+  REQUEST_ID_HEADER,
+  ...Object.values(LLMUX_HEADERS),
+  ...Object.values(RATE_LIMIT_HEADERS),
+]);
 
 /**
  * The public gateway API. Versioned in the path so /v1 never changes underneath clients.
@@ -39,9 +45,10 @@ export const EXPOSED_HEADERS = Object.freeze([REQUEST_ID_HEADER, ...Object.value
  *   keyLookup?: ReturnType<typeof createKeyLookup>,
  *   usage?: { record: (row: object) => void },
  *   responseCache?: ReturnType<typeof createResponseCache>,
+ *   limiter?: ReturnType<typeof createTokenBucket>,
  * }} deps  keyLookup defaults to a Redis-cached lookup over `keys`; usage is the usage
  *   writer (server.js passes the real one; without it, rows are discarded); responseCache
- *   defaults to a Redis cache on the same `redis`
+ *   defaults to a Redis cache on the same `redis`, and limiter to a Redis token bucket
  */
 export function v1Routes({
   gateway,
@@ -51,6 +58,7 @@ export function v1Routes({
   keyLookup = createKeyLookup({ keys, redis }),
   usage = discardUsage,
   responseCache = createResponseCache({ redis }),
+  limiter = createTokenBucket({ redis }),
 }) {
   const router = Router();
   // JSON chats check the response cache first; streams go straight to the gateway.
@@ -58,6 +66,8 @@ export function v1Routes({
 
   // Before everything else, so no route here can be reached without a valid key.
   router.use(requireApiKey({ lookup: keyLookup }));
+  // Then one token from the key's bucket per request, shared with its WebSocket chats.
+  router.use(rateLimitByKey({ limiter }));
 
   router.get("/models", (_req, res) => {
     res.json(listModels());
