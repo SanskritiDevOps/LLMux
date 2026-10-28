@@ -1,0 +1,13 @@
+{
+  "id": "chatcmpl-filtered",
+  "object": "chat.completion",
+  "model": "gpt-6.1-sol-2026-09-15",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "Here is how", "refusal": null },
+      "finish_reason": "content_filter"
+    }
+  ],
+  "usage": { "prompt_tokens": 11, "completion_tokens": 3, "total_tokens": 14 }
+}

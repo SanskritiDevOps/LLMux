@@ -1,0 +1,33 @@
+{
+  "id": "chatcmpl-B9MHDbslfkBeAs8l4bebGdFOJ6PeG",
+  "object": "chat.completion",
+  "created": 1793001600,
+  "model": "gpt-6.1-sol-2026-09-15",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Morning: Amber Fort. Afternoon: City Palace.",
+        "refusal": null,
+        "annotations": []
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 42,
+    "completion_tokens": 310,
+    "total_tokens": 352,
+    "prompt_tokens_details": { "cached_tokens": 0, "audio_tokens": 0 },
+    "completion_tokens_details": {
+      "reasoning_tokens": 120,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  },
+  "service_tier": "default",
+  "system_fingerprint": null
+}

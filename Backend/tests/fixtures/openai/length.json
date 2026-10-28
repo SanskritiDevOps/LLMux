@@ -1,0 +1,13 @@
+{
+  "id": "chatcmpl-length",
+  "object": "chat.completion",
+  "model": "gpt-6.1-sol-2026-09-15",
+  "choices": [
+    {
+      "index": 0,
+      "message": { "role": "assistant", "content": "Jaipur is the capital of", "refusal": null },
+      "finish_reason": "length"
+    }
+  ],
+  "usage": { "prompt_tokens": 8, "completion_tokens": 5, "total_tokens": 13 }
+}
