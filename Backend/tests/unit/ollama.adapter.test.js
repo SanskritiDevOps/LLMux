@@ -151,6 +151,7 @@ describe("mapOllamaError (real recordings)", () => {
 describe("ollamaAdapter", () => {
   it("is registered", () => {
     expect(providerRegistry.get("ollama")).toBe(ollamaAdapter);
-    expect(providerRegistry.names()).toEqual(["gemini", "ollama"]);
+    // Included, not alone: every new provider joins the same registry.
+    expect(providerRegistry.names()).toContain("ollama");
   });
 });

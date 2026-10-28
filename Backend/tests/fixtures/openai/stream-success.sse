@@ -1,0 +1,14 @@
+data: {"id":"chatcmpl-s1","object":"chat.completion.chunk","created":1793001600,"model":"gpt-6.1-sol-2026-09-15","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-s1","object":"chat.completion.chunk","created":1793001600,"model":"gpt-6.1-sol-2026-09-15","choices":[{"index":0,"delta":{"content":"Morning: "},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-s1","object":"chat.completion.chunk","created":1793001600,"model":"gpt-6.1-sol-2026-09-15","choices":[{"index":0,"delta":{"content":"Amber Fort, then "},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-s1","object":"chat.completion.chunk","created":1793001600,"model":"gpt-6.1-sol-2026-09-15","choices":[{"index":0,"delta":{"content":"lunch at LMB."},"finish_reason":null}],"usage":null}
+
+data: {"id":"chatcmpl-s1","object":"chat.completion.chunk","created":1793001600,"model":"gpt-6.1-sol-2026-09-15","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":null}
+
+data: {"id":"chatcmpl-s1","object":"chat.completion.chunk","created":1793001600,"model":"gpt-6.1-sol-2026-09-15","choices":[],"usage":{"prompt_tokens":12,"completion_tokens":11,"total_tokens":23,"completion_tokens_details":{"reasoning_tokens":0}}}
+
+data: [DONE]
+
