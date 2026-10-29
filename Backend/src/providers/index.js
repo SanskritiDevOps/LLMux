@@ -1,3 +1,4 @@
+import { anthropicAdapter } from "./anthropic/index.js";
 import { geminiAdapter } from "./gemini/index.js";
 import { ollamaAdapter } from "./ollama/index.js";
 import { openaiAdapter } from "./openai/index.js";
@@ -9,4 +10,5 @@ export const providerRegistry = createAdapterRegistry([
   geminiAdapter,
   ollamaAdapter,
   openaiAdapter,
+  anthropicAdapter,
 ]);

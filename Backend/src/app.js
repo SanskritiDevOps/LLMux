@@ -4,7 +4,9 @@ import helmet from "helmet";
 import { checkDatabase } from "./config/db.js";
 import { env } from "./config/env.js";
 import { checkRedis, redis as defaultRedis } from "./config/redis.js";
+import { noCircuitBreaker } from "./gateway/circuitBreaker.js";
 import { createGateway } from "./gateway/gateway.service.js";
+import { getEnabledProviders } from "./gateway/router.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 import { httpLogger } from "./middleware/httpLogger.js";
 import { requestId } from "./middleware/requestId.js";
@@ -13,6 +15,10 @@ import { createUsersRepository } from "./modules/auth/users.repository.js";
 import { createKeysRepository } from "./modules/keys/keys.repository.js";
 import { createTokenBucket } from "./modules/ratelimit/tokenBucket.js";
 import { keysRoutes } from "./modules/keys/keys.routes.js";
+import { playgroundRoutes } from "./modules/playground/playground.routes.js";
+import { providersRoutes } from "./modules/providers/providers.routes.js";
+import { createUsageQueries } from "./modules/usage/usage.queries.js";
+import { usageRoutes } from "./modules/usage/usage.routes.js";
 import { systemRoutes } from "./routes/system.routes.js";
 import { EXPOSED_HEADERS, v1Routes } from "./routes/v1.routes.js";
 import { logger as defaultLogger } from "./utils/logger.js";
@@ -39,6 +45,11 @@ const defaultChecks = { database: checkDatabase, redis: checkRedis };
  *   a Redis token bucket by default (tests pass their own)
  * @param {{ record: (row: object) => void }} [deps.usage] the usage writer; server.js passes
  *   the real one, and without it usage rows are discarded (tests pass a fake to inspect them)
+ * @param {ReturnType<typeof createUsageQueries>} [deps.usageQueries] dashboard reads of
+ *   usage_logs; Postgres by default (tests pass a fake)
+ * @param {{ state: (provider: string) => Promise<object> }} [deps.breaker] the gateway's
+ *   circuit breaker, for provider health; server.js passes the one its gateway uses
+ * @param {Set<string>} [deps.enabledProviders] providers with a key, for provider health
  * @param {(app: import("express").Express) => void} [deps.extraRoutes] tests register
  *   throwaway routes here so they sit before the 404 and error handlers
  */
@@ -51,6 +62,9 @@ export function createApp({
   redis = defaultRedis,
   usage,
   limiter = createTokenBucket({ redis }),
+  usageQueries = createUsageQueries(),
+  breaker = noCircuitBreaker,
+  enabledProviders = getEnabledProviders(),
   extraRoutes,
 } = {}) {
   const app = express();
@@ -73,6 +87,9 @@ export function createApp({
   app.use("/v1", v1Routes({ gateway, keys, redis, usage, limiter }));
   app.use("/api/auth", authRoutes({ users, limiter }));
   app.use("/api/keys", keysRoutes({ users, keys, redis }));
+  app.use("/api/usage", usageRoutes({ users, keys, usageQueries }));
+  app.use("/api/providers", providersRoutes({ users, breaker, enabledProviders, usageQueries }));
+  app.use("/api/playground", playgroundRoutes({ users, keys, gateway, limiter, usage }));
 
   extraRoutes?.(app);
 

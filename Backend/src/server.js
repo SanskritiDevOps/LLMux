@@ -30,7 +30,8 @@ try {
 
 // One gateway and one key lookup for both transports, so HTTP and WebSocket behave alike.
 // The circuit breaker keeps its state in Redis, so every instance skips the same providers.
-const gateway = createGateway({ breaker: createCircuitBreaker({ redis, logger }) });
+const breaker = createCircuitBreaker({ redis, logger });
+const gateway = createGateway({ breaker });
 const keys = createKeysRepository();
 const keyLookup = createKeyLookup({ keys, redis });
 // Every chat on either transport writes one usage row, in batches, off the request path.
@@ -39,7 +40,9 @@ const usage = createUsageWriter({ logger });
 const limiter = createTokenBucket({ redis, logger });
 
 // A plain HTTP server (not app.listen) so the WebSocket server can share its port.
-const server = http.createServer(createApp({ logger, gateway, keys, redis, usage, limiter }));
+const server = http.createServer(
+  createApp({ logger, gateway, keys, redis, usage, limiter, breaker }),
+);
 const websocket = attachWebSocket(server, { gateway, keyLookup, logger, usage, limiter });
 
 server.on("error", (err) => {

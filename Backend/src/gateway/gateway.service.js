@@ -75,6 +75,13 @@ function emptySummary() {
   };
 }
 
+/** A stream's usage so far, updated with a usage event that may carry only some counts. */
+function mergeUsage(previous, next) {
+  const inputTokens = next.inputTokens ?? previous?.inputTokens ?? 0;
+  const outputTokens = next.outputTokens ?? previous?.outputTokens ?? 0;
+  return { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens };
+}
+
 /** The provider's figures when it sent them, otherwise an estimate. */
 function finalUsage(request, progress) {
   return progress.usage
@@ -529,7 +536,7 @@ export function createGateway({
           progress.outputChars += event.text.length;
           yield { type: "delta", text: event.text };
         } else if (event.type === "usage") {
-          progress.usage = event.usage;
+          progress.usage = mergeUsage(progress.usage, event.usage);
         } else if (event.type === "finish") {
           progress.finishReason = event.finishReason;
         }

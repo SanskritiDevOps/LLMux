@@ -39,7 +39,9 @@ import { STREAM_FORMATS } from "./streamReader.js";
  *   these into the client's start / delta / end events
  * @property {"delta" | "usage" | "finish"} type
  * @property {string} [text]  delta: the next piece of the answer (never empty)
- * @property {ParsedResponse["usage"]} [usage]  usage: the latest totals (the last one wins)
+ * @property {Partial<ParsedResponse["usage"]>} [usage]  usage: the latest totals. A count
+ *   left out keeps its value from an earlier usage event (Anthropic sends input and output
+ *   tokens in different events); totalTokens is always recomputed by the gateway
  * @property {ParsedResponse["finishReason"]} [finishReason]  finish: why the answer ended
  *
  * @typedef {Object} ProviderAdapter

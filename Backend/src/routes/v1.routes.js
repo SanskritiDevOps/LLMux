@@ -144,7 +144,7 @@ export function v1Routes({
  * @returns {Promise<{ error?: import("../utils/errors.js").GatewayError, cancelled?: boolean }>}
  *   how the stream ended, for the usage log
  */
-async function streamToSse(events, res, log) {
+export async function streamToSse(events, res, log) {
   const first = await events.next();
 
   // Only what is known before the first token; the rest (latency, usage) is in `end`.
