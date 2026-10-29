@@ -21,5 +21,11 @@ export default [
       "no-unused-vars": ["error", { varsIgnorePattern: "^[A-Z_]", argsIgnorePattern: "^_" }],
     },
   },
+  {
+    // A route file lists its pages (export const routes) instead of exporting components;
+    // reloading it just reloads the router, which is fine.
+    files: ["src/features/*/route.jsx"],
+    rules: { "react-refresh/only-export-components": "off" },
+  },
   prettier,
 ];

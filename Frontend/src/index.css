@@ -1,1 +1,11 @@
 @import "tailwindcss";
+
+/* Dark-first (docs/Design.md section 2): native controls, scrollbars and the page itself
+   match the slate theme. */
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100 antialiased;
+}
