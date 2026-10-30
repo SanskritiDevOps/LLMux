@@ -24,6 +24,34 @@ describe("security headers", () => {
   });
 });
 
+describe("trust proxy", () => {
+  const ipApp = (trustProxy) =>
+    createApp({
+      trustProxy,
+      extraRoutes: (a) => a.get("/test/ip", (req, res) => res.json({ ip: req.ip })),
+    });
+
+  it("uses the client address from X-Forwarded-For behind one proxy", async () => {
+    const res = await request(ipApp(1)).get("/test/ip").set("X-Forwarded-For", "203.0.113.7");
+
+    expect(res.body.ip).toBe("203.0.113.7");
+  });
+
+  it("ignores X-Forwarded-For by default, so clients can't pick their own address", async () => {
+    const res = await request(ipApp(0)).get("/test/ip").set("X-Forwarded-For", "203.0.113.7");
+
+    expect(res.body.ip).not.toBe("203.0.113.7");
+  });
+
+  it("trusts only the last hop, so a forged earlier address doesn't win", async () => {
+    const res = await request(ipApp(1))
+      .get("/test/ip")
+      .set("X-Forwarded-For", "198.51.100.1, 203.0.113.7");
+
+    expect(res.body.ip).toBe("203.0.113.7");
+  });
+});
+
 describe("CORS", () => {
   it("allows the dashboard origin", async () => {
     const res = await request(app).get("/health").set("Origin", env.DASHBOARD_URL);

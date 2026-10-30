@@ -78,9 +78,15 @@ export async function startMockProvider() {
       return;
     }
     const reply = provider === "gemini" ? geminiAnswer(text) : ollamaAnswer(req.body.model, text);
+    // No timer without a delay: on Windows even setTimeout(0) waits for the next clock tick
+    // (about 15 ms), which would hide the gateway's own time in the benchmark.
+    if (!behavior.delayMs) {
+      res.json(reply);
+      return;
+    }
     setTimeout(() => {
       if (!res.writableEnded) res.json(reply);
-    }, behavior.delayMs ?? 0);
+    }, behavior.delayMs);
   });
 
   const server = await new Promise((resolve) => {

@@ -1,0 +1,65 @@
+# Render Blueprint for the LLMux backend, its Postgres and its Redis.
+# Render dashboard → New → Blueprint → pick this repository. Values marked sync: false
+# are asked for once, in the Render dashboard; they are never stored in the repository.
+# Steps and checks: docs/Setup-and-Initialisation.md, section 9.
+
+services:
+  - type: web
+    name: llmux-api
+    runtime: node
+    rootDir: Backend
+    plan: free
+    # Migrations run during the build, so a deploy whose schema change fails never starts.
+    buildCommand: npm ci && npx prisma migrate deploy
+    startCommand: npm start
+    # /health never checks dependencies, so a database blip doesn't restart a healthy
+    # process. /ready is for checking a deploy by hand.
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      # Render puts one proxy in front of the app.
+      - key: TRUST_PROXY
+        value: "1"
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        fromDatabase:
+          name: llmux-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: llmux-redis
+          property: connectionString
+      # A random 256-bit value made by Render, at least 32 characters as LLMux requires.
+      - key: JWT_SECRET
+        generateValue: true
+      # The dashboard's exact URL, for example https://llmux-dashboard.vercel.app
+      - key: DASHBOARD_URL
+        sync: false
+      # At least one provider key, or no alias is usable. Ollama doesn't run on Render.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+  - type: keyvalue
+    name: llmux-redis
+    plan: free
+    # Every LLMux key has an expiry (cache, rate limits, circuits, key lookups), so under
+    # memory pressure Redis drops the nearest-to-expiring ones instead of refusing writes.
+    maxmemoryPolicy: volatile-lru
+    # Reachable only from Render's private network.
+    ipAllowList: []
+
+databases:
+  - name: llmux-db
+    plan: free
+    databaseName: llmux
+    user: llmux
+    ipAllowList: []

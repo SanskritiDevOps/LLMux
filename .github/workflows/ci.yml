@@ -41,6 +41,9 @@ jobs:
           cache: npm
           cache-dependency-path: Backend/package-lock.json
       - run: npm ci
+      # Production dependencies only: dev tools never run in production. Fails on high or
+      # critical advisories; moderate ones are reviewed by hand.
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm test
 
@@ -58,5 +61,6 @@ jobs:
           cache: npm
           cache-dependency-path: Frontend/package-lock.json
       - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run lint
       - run: npm run build

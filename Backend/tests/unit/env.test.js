@@ -19,7 +19,14 @@ describe("parseEnv", () => {
       CACHE_ONLY_DETERMINISTIC: true,
       MAX_BODY_SIZE: "1mb",
       LOG_LEVEL: "info",
+      TRUST_PROXY: 0,
     });
+  });
+
+  it("accepts a proxy hop count and rejects nonsense", () => {
+    expect(parseEnv({ ...required, TRUST_PROXY: "1" }).TRUST_PROXY).toBe(1);
+    expect(() => parseEnv({ ...required, TRUST_PROXY: "yes" })).toThrow(/TRUST_PROXY/);
+    expect(() => parseEnv({ ...required, TRUST_PROXY: "-1" })).toThrow(/TRUST_PROXY/);
   });
 
   it("coerces numbers and parses booleans strictly", () => {

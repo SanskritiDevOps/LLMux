@@ -1,10 +1,10 @@
 # LLMux: One API for Every LLM
 
-![CI](https://github.com/<your-username>/<your-repo>/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/SanskritiDevOps/LLMux/actions/workflows/ci.yml/badge.svg)
 
 > A self-hosted LLM gateway. Send every request in one standard format, change only the `model` field, and LLMux routes it to OpenAI, Anthropic, Google Gemini, or a local model, translates the request and response, streams tokens back over HTTP or WebSocket, and adds caching, rate limiting, retries, fallback, and cost tracking on top.
 
-*(LLMux is a placeholder name. Rename it to whatever you like.)*
+**Status:** the MVP is built: four providers (Gemini, Ollama, OpenAI, Anthropic) with streaming, SSE and WebSocket, retries, fallback, a circuit breaker, caching, rate limits, usage and cost tracking, and the dashboard with its playground. 950 automated tests run in CI against real Postgres and Redis. Measured results are in [section 28](#28-benchmarking); a walkthrough is in [Demo](#demo).
 
 ---
 
@@ -69,6 +69,25 @@ Applications talk to LLMux in **one fixed format** with **one API key**. LLMux d
 - Response caching to save money and time
 - Per-key rate limits
 - A dashboard showing requests, latency, tokens, and cost
+
+### Demo
+
+A live deployment is set up from [`render.yaml`](render.yaml) and [`Frontend/vercel.json`](Frontend/vercel.json) (see [section 30](#30-deployment)). Locally, after [Local Setup](#26-local-setup), this five-minute walkthrough shows every feature:
+
+1. **Dashboard:** open `http://localhost:5173`, register, then on **API Keys** create a key. The full key is shown once, with a Copy button.
+2. **One format, any model:** send the same request with `"model": "local"` (Ollama) and then `"model": "fast"`; only the `model` field changes.
+   ```bash
+   curl http://localhost:5000/v1/chat \
+     -H "Authorization: Bearer $LLMUX_KEY" -H "Content-Type: application/json" \
+     -d '{"model":"local","messages":[{"role":"user","content":"Name one fort in Jaipur."}]}'
+   ```
+   The answer has the same shape for every provider, plus `X-LLMux-Provider`, `X-LLMux-Latency-Ms` and the other `X-LLMux-*` headers.
+3. **Streaming:** add `"stream": true` and use `curl -N`: `start`, then `delta` events word by word, then `end` with usage. Press Ctrl+C mid-answer and the server cancels the provider call.
+4. **Cache:** send a request with `"temperature": 0` twice. The second answers in milliseconds with `X-LLMux-Cache: HIT` and `"costUsd": 0`.
+5. **Fallback:** set `GEMINI_API_KEY=not-a-real-key` and send `"model": "fast"`. Gemini refuses, Ollama answers, and the response says `X-LLMux-Fallback-Used: true`.
+6. **Rate limit:** create a key limited to 2 a minute and send three requests: the third gets `429` with `Retry-After`.
+7. **Playground:** on **Playground**, tick **Compare**, pick two models and run one prompt: both stream side by side, each with its time to first token, latency, tokens and cost.
+8. **Overview, Logs and Providers:** every request above is now on the charts, in the logs table (click a row for the full record), and in each provider's health.
 
 ---
 
@@ -1038,6 +1057,10 @@ CACHE_TTL_SECONDS=3600
 CACHE_ONLY_DETERMINISTIC=true
 MAX_BODY_SIZE=1mb
 LOG_LEVEL=info
+
+# Production: proxies in front of the server (1 on Render), so the per-IP
+# login limit sees real client addresses. Keep 0 locally.
+TRUST_PROXY=0
 ```
 
 **Frontend/.env**
@@ -1056,14 +1079,14 @@ A provider with an empty key is disabled at startup, and its models are hidden f
 
 ```bash
 # 1. Clone
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/SanskritiDevOps/LLMux.git
+cd LLMux
 
 # 2. Start Postgres and Redis
 docker compose up -d
 
-# 3. (Optional) Pull a small local model
-ollama pull <local-model-name>
+# 3. (Optional) Pull the small local model the `fast` and `local` aliases use
+ollama pull llama3.2:1b
 
 # 4. Backend
 cd Backend
@@ -1080,6 +1103,10 @@ npm run dev
 ```
 
 Then open the dashboard at `http://localhost:5173`, create an account, create a gateway key, and try the playground.
+
+**Before step 4's `npm run dev`:** in `Backend/.env`, set `JWT_SECRET` to a random value of at least 32 characters (the command is in `.env.example`; the server refuses to start otherwise), and set at least one provider: `OLLAMA_BASE_URL` (already set for a local Ollama) or a `GEMINI_API_KEY`, `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. Without any, every alias answers `UNKNOWN_MODEL`.
+
+**Check it:** `curl http://localhost:5000/ready` should answer `{"status":"ready","checks":{"database":"ok","redis":"ok"}}`. Tests: `npm test` in `Backend/` (no Docker needed), or the same as CI with `TEST_REAL_DEPS=1 npm test`. More checks and common problems: [docs/Setup-and-Initialisation.md](docs/Setup-and-Initialisation.md), if you have the docs folder.
 
 ### Backend scripts
 
@@ -1143,86 +1170,74 @@ Claims in this README and on a resume must come from real measurements. This sec
 | **Cache benefit** | Latency of a cache hit vs a real provider call; cost saved over a repeated-prompt workload |
 | **Fallback time** | Time to answer when the primary is down, with and without an open circuit breaker |
 
-### Results table (fill in with your own numbers)
+### How it's measured
+
+`npm run bench` in `Backend/` (needs Docker for Postgres and Redis). Three processes, so none competes with another for its thread:
+- **a mock provider** (`tests/mockProvider.js`) that answers instantly
+- **the real LLMux app** (`bench/gatewayServer.js`) with the full production path: gateway key check (cached in Redis), the rate limit (the Redis Lua script), validation, routing, the adapter, the HTTP call, cost, and a usage row written to Postgres
+- **the load generator** (`bench/overhead.bench.js`): sequential timings, and autocannon for load
+
+Since only the provider is fake, every millisecond measured is LLMux's own. The script uses the `llmux_test` database and Redis database 2, and removes everything it creates.
+
+### Results
+
+Measured 2026-10-30 on a laptop: Intel Core i5-12450H (12 threads), 16 GB RAM, Windows 11, Node 22.14, with Postgres 16 and Redis 7 in Docker Desktop. Two full runs back to back; where they differ, both are shown.
 
 | Metric | Result | Setup |
 |---|---|---|
-| Gateway overhead (p50 / p95) | _TBD_ | e.g. 100 connections, 30 s, local machine |
-| Throughput | _TBD_ | |
-| Cache hit latency | _TBD_ | |
-| Fallback with open circuit | _TBD_ | |
+| **Gateway overhead** (median, one request at a time) | **4.4–4.9 ms** | 200 requests each: LLMux 5.4–5.8 ms vs the provider called directly 0.9–1.0 ms |
+| Gateway overhead (p95, one request at a time) | 8.3–10.1 ms vs 1.2–1.4 ms direct | same |
+| **Cache hit** (median, one request at a time) | **4.2–7.5 ms**, and **0 provider calls** | `temperature: 0`, answered from Redis |
+| Throughput through LLMux, no cache | 221–302 requests/s (p50 153–214 ms) | 50 connections × 10 s |
+| Throughput through LLMux, cache hits | 419–651 requests/s | 50 connections × 10 s |
+| This machine's ceiling: LLMux `GET /health` | 850–3,003 requests/s | an endpoint that does no work, same load |
+| **Time to first token** (median of 100 streams) | **16.0 ms** through LLMux vs 13.5 ms direct (**+2.6 ms**) | the mock's first event includes a 1 ms timer, which Windows rounds to its ~15 ms clock tick |
+| **Fallback, primary down** (Gemini answering 503) | **0.7–0.9 s** for the first request (3 tries with backoff, then Ollama); **9.7–10.6 ms** once the circuit is open | 30 requests in a row |
 
-Always record the machine and settings next to each number.
+**How to read these:**
+- **The overhead is the headline:** about 4–5 ms added to each request, measured one request at a time, where the machine matters least. Next to a real model call (hundreds of milliseconds to seconds), it's small.
+- **The throughput numbers are this laptop's, not LLMux's limit.** Even `/health`, which does nothing, varied from 850 to 3,003 requests a second between the two runs, because of whatever else the machine was doing. Run it on a Linux server for capacity numbers.
+- **The circuit breaker is what makes fallback fast:** once Gemini had failed 5 times, LLMux stopped trying it and answered from Ollama in about 10 ms instead of 0.7–0.9 s.
+- **Not measured yet:** real providers (no keys were set), and production hardware.
+
+Always record the machine and settings next to each number, as above.
 
 ---
 
 ## 29. CI Pipeline
 
-`.github/workflows/ci.yml`
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push to `main` and every pull request, as two jobs:
 
-```yaml
-name: CI
+| Job | Steps |
+|---|---|
+| **Backend** (lint + test) | `npm ci` → `npm audit --omit=dev --audit-level=high` → `npm run lint` → `npm test`, with **Postgres 16 and Redis 7 service containers** and `TEST_REAL_DEPS=1`, so the database and Redis tests run too (950 tests) |
+| **Frontend** (lint + build) | `npm ci` → `npm audit --omit=dev --audit-level=high` → `npm run lint` → `npm run build` |
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-jobs:
-  backend:
-    name: Backend (lint + test)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Backend
-    services:
-      redis:
-        image: redis:7
-        ports: ["6379:6379"]
-    env:
-      REDIS_URL: redis://localhost:6379
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: Backend/package-lock.json
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
-
-  frontend:
-    name: Frontend (lint + build)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: Frontend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: Frontend/package-lock.json
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run build
-```
-
-Add a `postgres` service and `DATABASE_URL` when integration tests start using the database. CI never uses real provider keys.
+- The tests use their own `llmux_test` database, migrated by the test setup with `prisma migrate deploy`, the same command a deploy runs.
+- **The audit covers production dependencies only** (dev tools never run in production), and fails on high or critical advisories. Moderate ones are reviewed by hand.
+- **CI never uses real provider keys:** every provider is tested against recorded or documented responses and a mock provider server.
 
 ---
 
 ## 30. Deployment
 
-| Piece | Suggested host | Notes |
+| Piece | Host | Config |
 |---|---|---|
-| Gateway (Backend) | Render, Railway, or Fly.io | Must support long-lived connections for SSE and WebSockets; disable response buffering |
-| Dashboard (Frontend) | Vercel or Netlify | Root directory `Frontend` |
-| PostgreSQL | Platform's managed Postgres, Neon, or Supabase | |
-| Redis | Upstash or platform Redis | |
+| Gateway (Backend) | Render web service | [`render.yaml`](render.yaml): build runs `npm ci` and `npx prisma migrate deploy`, start runs `npm start`, health check `/health`, `TRUST_PROXY=1` |
+| PostgreSQL | Render Postgres | same Blueprint; `DATABASE_URL` is wired in automatically |
+| Redis | Render Key Value | same Blueprint; `REDIS_URL` is wired in automatically, eviction `volatile-lru` (every LLMux key has an expiry) |
+| Dashboard (Frontend) | Vercel, root directory `Frontend` | [`Frontend/vercel.json`](Frontend/vercel.json): Vite build, and every path served by `index.html` so routes like `/logs` work on reload |
 | Ollama | Local only | Hosted deployments use cloud providers |
+
+**Steps:**
+1. **Backend:** Render → New → Blueprint → this repository. When asked, fill in `DASHBOARD_URL` (the Vercel URL from step 2; it can be set after) and at least one provider key. `JWT_SECRET` is generated by Render.
+2. **Dashboard:** Vercel → New Project → this repository, root directory `Frontend`. Set `VITE_API_URL` to the Render service's URL (for example `https://llmux-api.onrender.com`) and `VITE_WS_URL` to the same with `wss://` and `/v1/ws`.
+3. Set `DASHBOARD_URL` on Render to the exact Vercel URL (no trailing slash), and redeploy the backend.
+4. **Check:** `https://<api>/ready` answers `ready`; register on the dashboard; create a key; run a chat in the playground.
+
+**Free-plan limits to know** (Render): the web service sleeps after 15 minutes idle, so the first request after that takes a while; free Postgres expires after 30 days; free Key Value keeps data in memory only, so the cache and rate-limit buckets reset on a restart (LLMux treats that as a miss, never an error).
+
+**Cross-site cookies:** the dashboard (`*.vercel.app`) and the API (`*.onrender.com`) are different sites, so the session cookie is sent as `SameSite=None; Secure` (already set in production). Browsers that block third-party cookies, such as Safari by default, won't keep the session. The fix is one custom domain for both, for example `app.example.com` and `api.example.com`, which makes them the same site.
 
 **Checklist**
 - Provider keys set as secret env variables on the host
@@ -1231,6 +1246,8 @@ Add a `postgres` service and `DATABASE_URL` when integration tests start using t
 - Health checks point to `/health`
 - Proxy or platform timeouts are long enough for streaming responses
 - A demo gateway key with a low rate limit, so you can share the live demo safely
+- `TRUST_PROXY` set to the number of proxies in front of the server (1 on Render), so the per-IP login limit sees real client addresses
+- `npm audit --omit=dev` clean (CI fails on high or critical advisories)
 
 ---
 

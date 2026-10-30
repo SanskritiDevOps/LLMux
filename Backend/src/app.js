@@ -50,6 +50,7 @@ const defaultChecks = { database: checkDatabase, redis: checkRedis };
  * @param {{ state: (provider: string) => Promise<object> }} [deps.breaker] the gateway's
  *   circuit breaker, for provider health; server.js passes the one its gateway uses
  * @param {Set<string>} [deps.enabledProviders] providers with a key, for provider health
+ * @param {number} [deps.trustProxy] proxies in front of the server (TRUST_PROXY by default)
  * @param {(app: import("express").Express) => void} [deps.extraRoutes] tests register
  *   throwaway routes here so they sit before the 404 and error handlers
  */
@@ -65,9 +66,14 @@ export function createApp({
   usageQueries = createUsageQueries(),
   breaker = noCircuitBreaker,
   enabledProviders = getEnabledProviders(),
+  trustProxy = env.TRUST_PROXY,
   extraRoutes,
 } = {}) {
   const app = express();
+  // Behind a hosting proxy every request comes from the proxy's address. Trusting exactly
+  // that many hops makes req.ip the client's (from X-Forwarded-For), so the per-IP login
+  // limit isn't one bucket shared by everyone; trusting more would let clients spoof it.
+  app.set("trust proxy", trustProxy);
 
   // Request ID first, so every later log line and error can be traced.
   app.use(requestId());
