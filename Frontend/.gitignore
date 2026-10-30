@@ -1,5 +1,5 @@
-# Logs
-logs
+# Logs (anchored, so src/features/logs is not ignored)
+/logs
 *.log
 npm-debug.log*
 yarn-debug.log*
