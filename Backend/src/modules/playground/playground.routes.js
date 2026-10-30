@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { listModels as defaultListModels } from "../../gateway/catalog.js";
 import { microUsdToUsd } from "../../gateway/cost.js";
 import { ChatRequestSchema } from "../../gateway/schemas.js";
 import { toGatewayError } from "../../middleware/errorHandler.js";
@@ -20,6 +21,8 @@ export const PlaygroundChatSchema = ChatRequestSchema.omit({ stream: true }).ext
 /**
  * The dashboard playground, mounted at /api/playground.
  *
+ *   GET  /models                               → 200 { models }, exactly like GET /v1/models
+ *               (the browser has no gateway key to call that one with)
  *   POST /chat  { keyId, model, messages, … }  → an SSE stream, exactly like
  *               POST /v1/chat with stream: true, except that `end` also has costUsd
  *
@@ -28,12 +31,23 @@ export const PlaygroundChatSchema = ChatRequestSchema.omit({ stream: true }).ext
  * row under it, tagged metadata.source = "playground". The full key is never needed.
  *
  * @param {{ users: object, keys: object, gateway: object, limiter: object,
- *   usage?: { record: (row: object) => void } }} deps
+ *   usage?: { record: (row: object) => void }, listModels?: typeof defaultListModels }} deps
  */
-export function playgroundRoutes({ users, keys, gateway, limiter, usage = discardUsage }) {
+export function playgroundRoutes({
+  users,
+  keys,
+  gateway,
+  limiter,
+  usage = discardUsage,
+  listModels = defaultListModels,
+}) {
   const router = Router();
 
   router.use(requireSameOrigin(), requireSession({ users }));
+
+  router.get("/models", (_req, res) => {
+    res.json(listModels());
+  });
 
   // Sets req.apiKey like requireApiKey does for /v1, so the same rate limit applies.
   const ownActiveKey = async (req, _res, next) => {
