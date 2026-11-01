@@ -1,5 +1,5 @@
 /**
- * Each provider keeps one colour everywhere (docs/Design.md section 2).
+ * Each provider keeps one colour everywhere.
  *
  * `text` (Tailwind 400 steps) is for badges and labels. `chart` is for chart marks on the
  * dark surface: the 400 steps are too light for fills there, so charts use the darker

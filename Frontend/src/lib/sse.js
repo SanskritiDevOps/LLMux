@@ -1,7 +1,6 @@
 /**
- * Reads a Server-Sent Events body from fetch() as { type, ...data } objects, the shape the
- * API's stream events have (docs/API.md section 4). EventSource can't be used: it only
- * sends GET requests, and the playground needs a POST with a JSON body.
+ * Reads a Server-Sent Events body from fetch() as { type, ...data } objects. EventSource
+ * can't be used: it only sends GET requests, and the playground needs a POST with a body.
  *
  * Bytes can arrive split anywhere, even inside a character, so text is decoded as a
  * stream and only complete events (ending in a blank line) are parsed. Comment lines

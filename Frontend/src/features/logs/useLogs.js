@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client.js";
 
-export const PAGE_SIZE = 50;
+const PAGE_SIZE = 50;
 
 /** Pages of request logs, newest first; each page's nextCursor fetches the next one. */
 export function useLogs(filters) {

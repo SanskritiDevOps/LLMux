@@ -7,7 +7,6 @@ export const RANGES = {
   "30d": { label: "Last 30 days", hours: 30 * 24, interval: "day" },
 };
 
-// Overview data refreshes every 30 seconds (docs/Design.md section 8).
 const REFRESH_MS = 30_000;
 
 /** from/to for a range, worked out on every fetch so a refresh moves the window forward. */

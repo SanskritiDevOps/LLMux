@@ -1,7 +1,6 @@
 @import "tailwindcss";
 
-/* Dark-first (docs/Design.md section 2): native controls, scrollbars and the page itself
-   match the slate theme. */
+/* Dark only: native controls and scrollbars match the slate theme. */
 :root {
   color-scheme: dark;
 }

@@ -1,13 +1,20 @@
 import { Suspense, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useLogout, useSession } from "../hooks/useSession.js";
-import { navItems } from "../routes.js";
 import { Button, Spinner } from "./Button.jsx";
+
+const NAV_ITEMS = [
+  { path: "/", label: "Overview" },
+  { path: "/logs", label: "Logs" },
+  { path: "/playground", label: "Playground" },
+  { path: "/keys", label: "API Keys" },
+  { path: "/providers", label: "Providers" },
+];
 
 function NavItems({ onNavigate }) {
   return (
     <ul className="space-y-1">
-      {navItems.map((item) => (
+      {NAV_ITEMS.map((item) => (
         <li key={item.path}>
           <NavLink
             to={item.path}
@@ -100,7 +107,6 @@ export function AppShell() {
       </div>
 
       <main className="min-w-0 flex-1 p-4 md:p-6">
-        {/* Pages load on first visit (see routes.js), so charts don't slow down login. */}
         <Suspense fallback={<Spinner className="size-6 text-slate-400" />}>
           <Outlet />
         </Suspense>

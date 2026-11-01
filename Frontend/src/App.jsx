@@ -1,10 +1,26 @@
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { lazy } from "react";
 import { RouterProvider, createBrowserRouter } from "react-router-dom";
 import { AppShell } from "./components/AppShell.jsx";
 import { GuestOnly, RequireSession } from "./components/RequireSession.jsx";
+import { LoginPage } from "./features/auth/LoginPage.jsx";
+import { RegisterPage } from "./features/auth/RegisterPage.jsx";
 import { SESSION_KEY } from "./hooks/useSession.js";
 import { NotFoundPage } from "./pages/NotFoundPage.jsx";
-import { appRoutes, publicRoutes } from "./routes.js";
+
+// Pages behind the login load on first visit, so the login page doesn't download Recharts.
+const lazyPage = (load, name) => lazy(() => load().then((module) => ({ default: module[name] })));
+const OverviewPage = lazyPage(() => import("./features/overview/OverviewPage.jsx"), "OverviewPage");
+const LogsPage = lazyPage(() => import("./features/logs/LogsPage.jsx"), "LogsPage");
+const PlaygroundPage = lazyPage(
+  () => import("./features/playground/PlaygroundPage.jsx"),
+  "PlaygroundPage",
+);
+const KeysPage = lazyPage(() => import("./features/keys/KeysPage.jsx"), "KeysPage");
+const ProvidersPage = lazyPage(
+  () => import("./features/providers/ProvidersPage.jsx"),
+  "ProvidersPage",
+);
 
 // Any 401 means the session has ended (expired, or logged out in another tab): forgetting
 // the user makes RequireSession send them to /login.
@@ -25,10 +41,22 @@ const queryClient = new QueryClient({
 });
 
 const router = createBrowserRouter([
-  ...publicRoutes.map(({ path, element }) => ({
-    path,
-    element: <GuestOnly>{element}</GuestOnly>,
-  })),
+  {
+    path: "/login",
+    element: (
+      <GuestOnly>
+        <LoginPage />
+      </GuestOnly>
+    ),
+  },
+  {
+    path: "/register",
+    element: (
+      <GuestOnly>
+        <RegisterPage />
+      </GuestOnly>
+    ),
+  },
   {
     element: (
       <RequireSession>
@@ -36,13 +64,17 @@ const router = createBrowserRouter([
       </RequireSession>
     ),
     children: [
-      ...appRoutes.map(({ path, element }) => ({ path, element })),
+      { path: "/", element: <OverviewPage /> },
+      { path: "/logs", element: <LogsPage /> },
+      { path: "/playground", element: <PlaygroundPage /> },
+      { path: "/keys", element: <KeysPage /> },
+      { path: "/providers", element: <ProvidersPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },
 ]);
 
-export default function App() {
+export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />

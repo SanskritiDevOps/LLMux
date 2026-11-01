@@ -6,7 +6,7 @@ import { byteLength, isEmail } from "../../lib/forms.js";
 import { AuthLayout } from "./AuthLayout.jsx";
 import { useAuthForm } from "./useAuthForm.js";
 
-// The same rules as the API (docs/API.md section 5), so most mistakes are caught here.
+// The same rules as the API (registration.js), so most mistakes are caught before sending.
 function validate({ name, email, password }) {
   return {
     name: !name.trim()
