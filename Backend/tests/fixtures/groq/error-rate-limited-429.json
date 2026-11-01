@@ -1,0 +1,6 @@
+{
+  "error": {
+    "message": "Rate limit reached for model openai/gpt-oss-20b on tokens per minute (TPM). Please try again in 7.66s.",
+    "type": "tokens"
+  }
+}

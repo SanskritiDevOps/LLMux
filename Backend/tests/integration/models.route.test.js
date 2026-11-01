@@ -40,7 +40,7 @@ describe("GET /v1/models", () => {
       models: [
         {
           id: "fast",
-          description: "Cheap and quick; falls back to a local model",
+          description: "Cheap and quick; falls back to Groq, then a local model",
           providers: ["gemini", "ollama"],
           defaultMaxTokens: 1024,
         },

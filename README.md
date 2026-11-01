@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/SanskritiDevOps/LLMux/actions/workflows/ci.yml/badge.svg)
 
-A self-hosted LLM gateway. Applications send every chat request in one format, with one key, and LLMux routes it to Google Gemini, OpenAI, Anthropic or a local Ollama model. It translates the request and the answer, streams tokens over SSE or WebSocket, and adds retries, fallback, a circuit breaker, caching, rate limits and per-request cost tracking. A React dashboard shows usage, logs, keys and provider health, and has a playground for comparing two models side by side.
+A self-hosted LLM gateway. Applications send every chat request in one format, with one key, and LLMux routes it to Google Gemini, Groq, OpenAI, Anthropic or a local Ollama model. It translates the request and the answer, streams tokens over SSE or WebSocket, and adds retries, fallback, a circuit breaker, caching, rate limits and per-request cost tracking. A React dashboard shows usage, logs, keys and provider health, and has a playground for comparing two models side by side.
 
 Switching an application from one model to another means changing the `model` field, nothing else.
 
@@ -25,7 +25,7 @@ Switching an application from one model to another means changing the `model` fi
 **Gateway (`/v1`)**
 - `POST /v1/chat`: one request and response format for every provider, as JSON or as an SSE stream
 - `/v1/ws`: a WebSocket protocol with several chats in progress per socket, and `cancel`
-- Adapters for Gemini, OpenAI (Chat Completions), Anthropic (Messages) and Ollama, each translating requests, responses, stream events and errors
+- Adapters for Gemini, Groq, OpenAI (Chat Completions), Anthropic (Messages) and Ollama, each translating requests, responses, stream events and errors
 - Model aliases (`fast`, `smart`, `local`) with fallback chains, or a direct `provider:model` call
 - Retries with exponential backoff and jitter, `Retry-After`, and one deadline across all attempts
 - Fallback to the next provider in the chain, for streams too, as long as no token has been sent
@@ -78,7 +78,7 @@ npm install
 npm run dev                           # http://localhost:5173
 ```
 
-At least one provider must be configured: `OLLAMA_BASE_URL` (set in `.env.example` for a local Ollama), or `GEMINI_API_KEY`, `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. Every setting is listed, with its default, in [`Backend/.env.example`](Backend/.env.example) and validated at startup by [`src/config/env.js`](Backend/src/config/env.js).
+At least one provider must be configured: `OLLAMA_BASE_URL` (set in `.env.example` for a local Ollama), or `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. Gemini and Groq both have free tiers. Every setting is listed, with its default, in [`Backend/.env.example`](Backend/.env.example) and validated at startup by [`src/config/env.js`](Backend/src/config/env.js).
 
 Open the dashboard, register, create a key on **API Keys**, and send a request:
 
@@ -191,13 +191,13 @@ Clients use aliases; the server decides what's behind them ([`src/config/models.
 
 | Alias | Targets, in fallback order |
 |---|---|
-| `fast` | `gemini:gemini-3.5-flash-lite` → `ollama:llama3.2:1b` |
-| `smart` | `anthropic:claude-sonnet-5-5` → `openai:gpt-6.1-sol` → `gemini:gemini-2.5-pro` |
+| `fast` | `gemini:gemini-3.5-flash-lite` → `groq:openai/gpt-oss-20b` → `ollama:llama3.2:1b` |
+| `smart` | `anthropic:claude-sonnet-5-5` → `openai:gpt-6.1-sol` → `gemini:gemini-2.5-pro` → `groq:openai/gpt-oss-120b` |
 | `local` | `ollama:llama3.2:1b` |
 
-Providers without a key are left out of every chain. A direct `provider:model` name, such as `ollama:llama3.2:1b`, calls exactly that model with no fallback. Prices live in the same file, in micro-dollars per million tokens, and the whole file is validated at startup.
+Providers without a key are left out of every chain. Ollama runs only where its server is, so a hosted deployment uses Gemini and Groq: `fast` then answers from Gemini and falls back to Groq. A direct `provider:model` name, such as `ollama:llama3.2:1b`, calls exactly that model with no fallback. Prices live in the same file, in micro-dollars per million tokens, and the whole file is validated at startup.
 
-**Adding a provider:** write `Backend/src/providers/<name>/` with `request.js`, `response.js`, `stream.js`, `errors.js` and `index.js` (see any existing provider), register it in `src/providers/index.js`, add its key to `src/config/env.js` and its models to `src/config/models.js`, and add fixture tests. Nothing else changes.
+**Adding a provider:** write `Backend/src/providers/<name>/` with `request.js`, `response.js`, `stream.js`, `errors.js` and `index.js` (see any existing provider), register it in `src/providers/index.js`, add its key to `src/config/env.js`, `src/gateway/providerSettings.js` and `getEnabledProviders` in `src/gateway/router.js`, add its models to `src/config/models.js`, and add fixture tests. The gateway, routes and transports don't change. Groq is an example: it speaks OpenAI's format, so its adapter reuses the OpenAI code with its own name, address and error mapping.
 
 ## Design decisions
 
@@ -221,7 +221,7 @@ Backend/
     routes/        /v1 (chat, models) and /health, /ready
     transports/    SSE writer, WebSocket server and protocol
     gateway/       the core: router, retries, deadline, fallback, circuit breaker, cache, cost
-    providers/     adapter contract, HTTP client, stream reader; gemini/ ollama/ openai/ anthropic/
+    providers/     adapter contract, HTTP client, stream reader; gemini/ groq/ ollama/ openai/ anthropic/
     middleware/    request ID, logging, key and session auth, origin check, rate limits, errors
     modules/       dashboard API: auth, keys, usage, providers, playground, rate limiter
     scripts/       rateLimit.lua
@@ -272,7 +272,7 @@ The throughput numbers describe this laptop more than LLMux: even `/health`, whi
 
 ## Limitations
 
-- Only the Ollama adapter has been run against the real service. Gemini, OpenAI and Anthropic are tested against responses written from their API references, because no keys were available.
+- Only the Ollama adapter has been run against the real service. Gemini, Groq, OpenAI and Anthropic are tested against responses written from their API references, because no keys were available.
 - Text chat only: no tool calling, images or embeddings.
 - On the default `*.vercel.app` and `*.onrender.com` domains the session cookie is cross-site, which Safari blocks by default; one custom domain for both fixes that.
 - No live deployment yet.

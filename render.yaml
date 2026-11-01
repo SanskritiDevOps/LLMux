@@ -47,6 +47,9 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Free tier; the fallback for `fast` and `smart` when deployed.
+      - key: GROQ_API_KEY
+        sync: false
 
   - type: keyvalue
     name: llmux-redis

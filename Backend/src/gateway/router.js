@@ -16,6 +16,7 @@ export function getEnabledProviders(env = defaultEnv) {
   if (env.GEMINI_API_KEY) enabled.add("gemini");
   if (env.OPENAI_API_KEY) enabled.add("openai");
   if (env.ANTHROPIC_API_KEY) enabled.add("anthropic");
+  if (env.GROQ_API_KEY) enabled.add("groq");
   if (env.OLLAMA_BASE_URL) enabled.add("ollama");
   return enabled;
 }

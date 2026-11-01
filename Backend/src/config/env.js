@@ -30,6 +30,7 @@ const envSchema = z
     GEMINI_API_KEY: optionalSecret,
     OPENAI_API_KEY: optionalSecret,
     ANTHROPIC_API_KEY: optionalSecret,
+    GROQ_API_KEY: optionalSecret,
     OLLAMA_BASE_URL: z.url().optional(),
 
     DEFAULT_RATE_LIMIT_PER_MIN: positiveInt.default(60),

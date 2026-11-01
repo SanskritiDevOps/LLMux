@@ -49,12 +49,12 @@ export const FINISH_REASONS = {
   content_filter: "content_filter",
 };
 
-export function unreadable(cause) {
+export function unreadable(cause, provider = PROVIDER) {
   return new GatewayError(
     "PROVIDER_ERROR",
-    `${PROVIDER} returned a response LLMux could not read`,
+    `${provider} returned a response LLMux could not read`,
     {
-      provider: PROVIDER,
+      provider,
       cause,
     },
   );
@@ -68,17 +68,18 @@ export function toUsage(usage) {
 
 /**
  * @param {unknown} json
+ * @param {string} [provider]  for errors, when another provider uses this format
  * @returns {import("../adapter.js").ParsedResponse}
  */
-export function parseOpenAIResponse(json) {
+export function parseOpenAIResponse(json, provider = PROVIDER) {
   const result = OpenAIResponseSchema.safeParse(json);
   if (!result.success || json === null || typeof json !== "object") {
-    throw unreadable(result.error);
+    throw unreadable(result.error, provider);
   }
   const { choices, usage } = result.data;
   const choice = choices?.[0];
   if (!choice?.message) {
-    throw unreadable(new Error("Response has no choices"));
+    throw unreadable(new Error("Response has no choices"), provider);
   }
 
   const usageOut = toUsage(usage);

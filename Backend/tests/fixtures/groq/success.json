@@ -1,0 +1,30 @@
+{
+  "id": "chatcmpl-f51b2cd2-bef7-417e-964e-a08f0b513c22",
+  "object": "chat.completion",
+  "created": 1793520000,
+  "model": "openai/gpt-oss-20b",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Morning: Amber Fort. Afternoon: City Palace.",
+        "reasoning": "The user wants a one-day plan for Jaipur. Pick two classic sights."
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.037493756,
+    "prompt_tokens": 18,
+    "prompt_time": 0.000680594,
+    "completion_tokens": 56,
+    "completion_time": 0.0466,
+    "total_tokens": 74,
+    "total_time": 0.047280594
+  },
+  "system_fingerprint": "fp_179b0f92c9",
+  "x_groq": { "id": "req_01jbd6g2qdfw2adyrt2az8hz4w" },
+  "service_tier": "on_demand"
+}

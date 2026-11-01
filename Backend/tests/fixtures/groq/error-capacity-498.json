@@ -1,0 +1,6 @@
+{
+  "error": {
+    "message": "Flex tier capacity exceeded. Please try again later.",
+    "type": "capacity_exceeded"
+  }
+}

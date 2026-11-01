@@ -14,24 +14,34 @@ import { FINISH_REASONS, toUsage, unreadable } from "./response.js";
  *
  * A refusal arrives as delta.refusal; its text isn't an answer, so it is left out.
  *
+ * Other providers in this format pass their own `provider` name and `mapError`, and
+ * `usageOf` if they put the token counts somewhere else.
+ *
  * @param {string} raw  one event's data, already complete (see streamReader.js)
+ * @param {{ provider?: string, mapError?: typeof mapOpenAIError,
+ *   usageOf?: (chunk: object) => unknown }} [options]
  * @returns {import("../adapter.js").ProviderStreamEvent[]}
  */
-export function parseOpenAIStreamChunk(raw) {
+export function parseOpenAIStreamChunk(
+  raw,
+  { provider = "openai", mapError = mapOpenAIError, usageOf = (chunk) => chunk.usage } = {},
+) {
   if (raw.trim() === "[DONE]") return [];
 
   let json;
   try {
     json = JSON.parse(raw);
   } catch (err) {
-    throw unreadable(err);
+    throw unreadable(err, provider);
   }
-  if (json === null || typeof json !== "object") throw unreadable(new Error("Not an object"));
+  if (json === null || typeof json !== "object") {
+    throw unreadable(new Error("Not an object"), provider);
+  }
 
   // After the 200, a failure can only arrive as an event. It carries no HTTP status, so
   // it is treated as a server error.
   if (json.error) {
-    throw mapOpenAIError({ status: 500, body: json });
+    throw mapError({ status: 500, body: json });
   }
 
   const events = [];
@@ -39,14 +49,12 @@ export function parseOpenAIStreamChunk(raw) {
   const text = choice?.delta?.content;
   if (typeof text === "string" && text !== "") events.push({ type: "delta", text });
 
-  if (json.usage) {
-    if (
-      !Number.isInteger(json.usage.prompt_tokens) ||
-      !Number.isInteger(json.usage.completion_tokens)
-    ) {
-      throw unreadable(new Error("Usage chunk without token counts"));
+  const usage = usageOf(json);
+  if (usage) {
+    if (!Number.isInteger(usage.prompt_tokens) || !Number.isInteger(usage.completion_tokens)) {
+      throw unreadable(new Error("Usage chunk without token counts"), provider);
     }
-    events.push({ type: "usage", usage: toUsage(json.usage) });
+    events.push({ type: "usage", usage: toUsage(usage) });
   }
 
   if (choice?.finish_reason) {

@@ -10,6 +10,9 @@
  *                              by reasoning models)
  *   stream: true         →     stream: true, plus stream_options.include_usage so the last
  *                              chunk carries token counts (otherwise usage is estimated)
+ *
+ * Providers that copy this API (Groq) reuse it with their own name and base URL, and can
+ * leave out stream_options if they don't document it.
  */
 
 export const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com";
@@ -18,15 +21,21 @@ export const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com";
  * @param {import("../adapter.js").UnifiedRequest} request
  * @param {import("../adapter.js").Target} target
  * @param {import("../adapter.js").RequestContext} context
+ * @param {{ provider?: string, defaultBaseUrl?: string, streamUsage?: boolean }} [options]
  * @returns {import("../adapter.js").ProviderRequest}
  */
-export function buildOpenAIRequest(request, target, { maxTokens, apiKey, baseUrl }) {
+export function buildOpenAIRequest(
+  request,
+  target,
+  { maxTokens, apiKey, baseUrl },
+  { provider = "openai", defaultBaseUrl = OPENAI_DEFAULT_BASE_URL, streamUsage = true } = {},
+) {
   if (!apiKey) {
     // The router only returns providers that have a key, so reaching this is a bug.
-    throw new TypeError("OpenAI request built without an API key");
+    throw new TypeError(`${provider} request built without an API key`);
   }
 
-  const base = (baseUrl ?? OPENAI_DEFAULT_BASE_URL).replace(/\/+$/, "");
+  const base = (baseUrl ?? defaultBaseUrl).replace(/\/+$/, "");
   const messages = request.messages.map(({ role, content }) => ({ role, content }));
   if (request.system) {
     messages.unshift({ role: "system", content: request.system });
@@ -40,7 +49,7 @@ export function buildOpenAIRequest(request, target, { maxTokens, apiKey, baseUrl
   };
   if (request.stream) {
     body.stream = true;
-    body.stream_options = { include_usage: true };
+    if (streamUsage) body.stream_options = { include_usage: true };
   }
 
   return {

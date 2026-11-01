@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PROVIDERS = ["gemini", "ollama", "openai", "anthropic"];
+export const PROVIDERS = ["gemini", "ollama", "openai", "anthropic", "groq"];
 
 /**
  * Every provider model LLMux may call, keyed "provider:model".
@@ -10,6 +10,7 @@ export const PROVIDERS = ["gemini", "ollama", "openai", "anthropic"];
  *   https://ai.google.dev/gemini-api/docs/pricing (page dated 2026-10-16)
  *   https://developers.openai.com/api/docs/pricing
  *   https://platform.claude.com/docs/en/about-claude/pricing
+ *   https://console.groq.com/docs/models (2026-11-01)
  * Tiered models are priced at their base tier (Gemini 2.5 Pro: prompts up to 200k tokens).
  *
  * maxOutputTokens is LLMux's own cap per request, not the model's hard limit: it bounds
@@ -36,6 +37,17 @@ const catalog = {
     outputPerMTok: 10_000_000, // $10.00
     maxOutputTokens: 8192,
   },
+  // Open-weight reasoning models on Groq. Their reasoning counts as output tokens.
+  "groq:openai/gpt-oss-20b": {
+    inputPerMTok: 75_000, // $0.075
+    outputPerMTok: 300_000, // $0.30
+    maxOutputTokens: 8192,
+  },
+  "groq:openai/gpt-oss-120b": {
+    inputPerMTok: 150_000, // $0.15
+    outputPerMTok: 600_000, // $0.60
+    maxOutputTokens: 8192,
+  },
   // Local models are free to run.
   "ollama:llama3.2:1b": {
     inputPerMTok: 0,
@@ -50,13 +62,18 @@ const catalog = {
  */
 const aliases = {
   fast: {
-    description: "Cheap and quick; falls back to a local model",
-    targets: ["gemini:gemini-3.5-flash-lite", "ollama:llama3.2:1b"],
+    description: "Cheap and quick; falls back to Groq, then a local model",
+    targets: ["gemini:gemini-3.5-flash-lite", "groq:openai/gpt-oss-20b", "ollama:llama3.2:1b"],
     defaultMaxTokens: 1024,
   },
   smart: {
     description: "Strongest available model across providers",
-    targets: ["anthropic:claude-sonnet-5-5", "openai:gpt-6.1-sol", "gemini:gemini-2.5-pro"],
+    targets: [
+      "anthropic:claude-sonnet-5-5",
+      "openai:gpt-6.1-sol",
+      "gemini:gemini-2.5-pro",
+      "groq:openai/gpt-oss-120b",
+    ],
     defaultMaxTokens: 2048,
   },
   local: {

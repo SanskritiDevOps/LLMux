@@ -223,12 +223,14 @@ describe("getProviderSettings", () => {
         GEMINI_API_KEY: "g",
         OPENAI_API_KEY: undefined,
         ANTHROPIC_API_KEY: "a",
+        GROQ_API_KEY: "q",
         OLLAMA_BASE_URL: "http://localhost:11434",
       }),
     ).toEqual({
       gemini: { apiKey: "g" },
       openai: { apiKey: undefined },
       anthropic: { apiKey: "a" },
+      groq: { apiKey: "q" },
       ollama: { baseUrl: "http://localhost:11434" },
     });
   });

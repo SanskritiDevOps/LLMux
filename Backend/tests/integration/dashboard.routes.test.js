@@ -227,6 +227,7 @@ describe("GET /api/providers/health", () => {
       "ollama",
       "openai",
       "anthropic",
+      "groq",
     ]);
     expect(res.body.providers[0]).toEqual({
       provider: "gemini",

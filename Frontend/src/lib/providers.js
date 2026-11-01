@@ -4,7 +4,8 @@
  * `text` (Tailwind 400 steps) is for badges and labels. `chart` is for chart marks on the
  * dark surface: the 400 steps are too light for fills there, so charts use the darker
  * steps of the same hues, which pass the colour-blind separation and contrast checks
- * against slate-900.
+ * against slate-900. Five hues can't all be told apart under every kind of colour
+ * blindness, so providers are always named too: on chart axes and in every badge.
  */
 export const PROVIDER_COLORS = {
   gemini: { label: "Gemini", text: "text-sky-400", dot: "bg-sky-400", chart: "#0084d1" },
@@ -16,6 +17,7 @@ export const PROVIDER_COLORS = {
     chart: "#f54900",
   },
   ollama: { label: "Ollama", text: "text-violet-400", dot: "bg-violet-400", chart: "#8e51ff" },
+  groq: { label: "Groq", text: "text-pink-400", dot: "bg-pink-400", chart: "#e60076" },
 };
 
 const UNKNOWN = { label: "Unknown", text: "text-slate-400", dot: "bg-slate-500", chart: "#62748e" };

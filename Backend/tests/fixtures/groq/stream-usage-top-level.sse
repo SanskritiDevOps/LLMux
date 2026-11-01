@@ -1,0 +1,12 @@
+data: {"id":"chatcmpl-s1","object":"chat.completion.chunk","created":1793520000,"model":"openai/gpt-oss-20b","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}],"x_groq":{"id":"req_s1"}}
+
+data: {"id":"chatcmpl-s1","object":"chat.completion.chunk","created":1793520000,"model":"openai/gpt-oss-20b","choices":[{"index":0,"delta":{"content":"Morning: "},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-s1","object":"chat.completion.chunk","created":1793520000,"model":"openai/gpt-oss-20b","choices":[{"index":0,"delta":{"content":"Amber Fort."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-s1","object":"chat.completion.chunk","created":1793520000,"model":"openai/gpt-oss-20b","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"id":"chatcmpl-s1","object":"chat.completion.chunk","created":1793520000,"model":"openai/gpt-oss-20b","choices":[],"usage":{"prompt_tokens":12,"completion_tokens":9,"total_tokens":21}}
+
+data: [DONE]
+

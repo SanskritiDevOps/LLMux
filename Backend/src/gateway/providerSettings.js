@@ -11,6 +11,7 @@ export function getProviderSettings(env = defaultEnv) {
     gemini: { apiKey: env.GEMINI_API_KEY },
     openai: { apiKey: env.OPENAI_API_KEY },
     anthropic: { apiKey: env.ANTHROPIC_API_KEY },
+    groq: { apiKey: env.GROQ_API_KEY },
     ollama: { baseUrl: env.OLLAMA_BASE_URL },
   };
 }

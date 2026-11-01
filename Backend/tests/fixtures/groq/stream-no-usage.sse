@@ -1,0 +1,6 @@
+data: {"id":"chatcmpl-s3","object":"chat.completion.chunk","created":1793520000,"model":"openai/gpt-oss-20b","choices":[{"index":0,"delta":{"role":"assistant","content":"Morning: Amber Fort."},"finish_reason":null}]}
+
+data: {"id":"chatcmpl-s3","object":"chat.completion.chunk","created":1793520000,"model":"openai/gpt-oss-20b","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]
+
