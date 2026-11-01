@@ -11,7 +11,7 @@ import { GatewayError } from "../utils/errors.js";
 import { errorMessage, parseClientMessage } from "./wsProtocol.js";
 
 /**
- * /v1/ws: streaming chat over one long-lived connection (README section 19). Transport
+ * /v1/ws: streaming chat over one long-lived connection. Transport
  * only, like sse.js: every chat goes through gateway.stream(), the same code as SSE.
  *
  * Lifecycle of a socket:
@@ -21,12 +21,12 @@ import { errorMessage, parseClientMessage } from "./wsProtocol.js";
  *   4. closing the socket (or the heartbeat finding it dead) cancels every chat in progress
  */
 
-export const WS_PATH = "/v1/ws";
-export const AUTH_TIMEOUT_MS = 5_000;
+const WS_PATH = "/v1/ws";
+const AUTH_TIMEOUT_MS = 5_000;
 // Protocol-level pings find connections that died without a close (a laptop lid shut,
 // a mobile network change), so their provider calls are cancelled too.
 export const HEARTBEAT_INTERVAL_MS = 30_000;
-export const MAX_IN_FLIGHT = 3;
+const MAX_IN_FLIGHT = 3;
 
 // Application close codes live in 4000-4999 (RFC 6455 section 7.4.2).
 export const CLOSE_CODES = Object.freeze({

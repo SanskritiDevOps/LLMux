@@ -1,13 +1,11 @@
 import { logger as defaultLogger } from "../../utils/logger.js";
 import { createUsageRepository } from "./usage.repository.js";
 
-// README section 16: "the log write happens after the response is sent. If the database is
-// briefly unavailable, logs are buffered in memory and flushed in batches."
-export const BATCH_SIZE = 100;
+const BATCH_SIZE = 100;
 export const FLUSH_INTERVAL_MS = 1_000;
 // About 10 MB of rows. Past this, during a long database outage, the oldest rows are
 // dropped rather than letting memory grow without limit.
-export const MAX_BUFFERED = 10_000;
+const MAX_BUFFERED = 10_000;
 
 /**
  * Prisma's P2xxx codes mean the database refused the data (a foreign key, a value too

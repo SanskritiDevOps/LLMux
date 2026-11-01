@@ -5,7 +5,7 @@ import { getEnabledProviders } from "./router.js";
  * The model aliases a client can use right now, for GET /v1/models.
  *
  * - An alias is listed only if at least one of its providers is configured on this
- *   server; a provider with no key is hidden (README section 25).
+ *   server; a provider with no key is hidden.
  * - Only provider names are shown, never provider model IDs: aliases are the contract,
  *   and the server can change what sits behind them without telling clients.
  * - Direct "provider:model" names are not listed; they are an escape hatch, not the API.

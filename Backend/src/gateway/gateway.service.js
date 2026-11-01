@@ -94,7 +94,7 @@ function finalUsage(request, progress) {
  * translate back, attach cost. It knows no provider format (only adapters do) and no
  * transport (routes turn its result into HTTP, SSE or WebSocket messages).
  *
- * Every call walks the alias's fallback chain (README section 14): each target is tried,
+ * Every call walks the alias's fallback chain: each target is tried,
  * retried with backoff when the error allows it, and the next target is tried when it
  * doesn't answer, all inside one overall deadline; providers known to be down are skipped
  * (the circuit breaker). Every dependency, including the wait
@@ -140,7 +140,7 @@ export function createGateway({
   }
 
   /**
-   * Runs `attempt` down the alias's chain until one succeeds (README section 14):
+   * Runs `attempt` down the alias's chain until one succeeds:
    *
    *   - each target gets up to 1 + maxRetries attempts, while its errors are retryable
    *   - between retries: backoffDelay() (about 250 ms, then 500 ms), or the provider's
@@ -381,8 +381,8 @@ export function createGateway({
   /**
    * Streams one request as unified events: start, then delta…, then end.
    *
-   * A stream commits to a provider at its first token (README section 14: fall back "only
-   * before the first token is sent"). Until then, an error, a refusal, a timeout or a
+   * A stream commits to a provider at its first token: once the client has seen text, a
+   * different provider can't take over. Until then, an error, a refusal, a timeout or a
    * stream that fails before saying anything is retried or falls back exactly like
    * chat(), and the client sees none of it. So `start` is yielded only once the first
    * token has arrived (or the provider finished without any text), naming the provider

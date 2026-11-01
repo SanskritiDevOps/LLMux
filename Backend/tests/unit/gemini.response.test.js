@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { mapGeminiError, parseGeminiResponse } from "../../src/providers/gemini/response.js";
+import { mapGeminiError } from "../../src/providers/gemini/errors.js";
+import { parseGeminiResponse } from "../../src/providers/gemini/response.js";
 import { GatewayError } from "../../src/utils/errors.js";
 
 // Fixtures follow the documented Gemini response and error formats

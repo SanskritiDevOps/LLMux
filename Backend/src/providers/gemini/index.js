@@ -1,6 +1,7 @@
 import { defineAdapter } from "../adapter.js";
 import { GEMINI_DEFAULT_BASE_URL, buildGeminiRequest } from "./request.js";
-import { mapGeminiError, parseGeminiResponse } from "./response.js";
+import { mapGeminiError } from "./errors.js";
+import { parseGeminiResponse } from "./response.js";
 import { parseGeminiStreamChunk } from "./stream.js";
 
 export const geminiAdapter = defineAdapter({

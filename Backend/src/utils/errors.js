@@ -8,7 +8,6 @@ export const ERROR_CODES = Object.freeze({
   UNKNOWN_MODEL: { status: 400, retryable: false },
   UNAUTHORIZED: { status: 401, retryable: false },
   KEY_REVOKED: { status: 401, retryable: false },
-  BUDGET_EXCEEDED: { status: 402, retryable: false },
   FORBIDDEN: { status: 403, retryable: false },
   NOT_FOUND: { status: 404, retryable: false },
   PAYLOAD_TOO_LARGE: { status: 413, retryable: false },
@@ -40,7 +39,7 @@ export class GatewayError extends Error {
     this.retryable = retryable ?? definition.retryable;
   }
 
-  /** The unified error body from README section 8. */
+  /** The error body every endpoint returns. */
   toBody(requestId) {
     return {
       error: {

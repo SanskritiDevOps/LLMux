@@ -14,7 +14,7 @@ import { discardUsage, trackUsage } from "../usage/usageRecorder.js";
 
 // Every POST /v1/chat field except stream (the playground always streams), plus the key
 // the chat runs as.
-export const PlaygroundChatSchema = ChatRequestSchema.omit({ stream: true }).extend({
+const PlaygroundChatSchema = ChatRequestSchema.omit({ stream: true }).extend({
   keyId: z.uuid({ error: "must be a key ID" }),
 });
 

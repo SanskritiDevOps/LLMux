@@ -11,7 +11,7 @@ import { captureLogs } from "../helpers/captureLogs.js";
 import { fakeRedis } from "../helpers/fakeRedis.js";
 
 // The breaker against an in-memory Redis whose expiry follows Date.now(), so fake timers
-// move it: closed → open → half-open → closed, as in README section 14.
+// move it: closed → open → half-open → closed.
 let redis;
 let logs;
 let breaker;

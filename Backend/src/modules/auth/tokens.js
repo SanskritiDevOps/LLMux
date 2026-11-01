@@ -4,7 +4,7 @@ import { env } from "../../config/env.js";
 /**
  * Dashboard sessions are JWTs kept in an httpOnly cookie, so page JavaScript (and any
  * cross-site scripting bug) can never read them. Gateway keys for /v1 are a separate
- * system (Day 6); a session can never call /v1 and a gateway key can never call /api.
+ * system: a session can never call /v1, and a gateway key can never call /api.
  */
 
 export const SESSION_COOKIE = "llmux_session";

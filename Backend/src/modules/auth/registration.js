@@ -13,7 +13,7 @@ export const EmailSchema = z
   .toLowerCase()
   .pipe(z.email({ error: "must be a valid email" }));
 
-export const PasswordSchema = z
+const PasswordSchema = z
   .string()
   .min(8, { error: "must be at least 8 characters" })
   .refine((value) => Buffer.byteLength(value, "utf8") <= MAX_PASSWORD_BYTES, {

@@ -1,7 +1,7 @@
 import { GatewayError } from "../utils/errors.js";
 
 /**
- * What to do after one attempt fails (README section 14):
+ * What to do after one attempt fails:
  *
  *   error                                   retry same target?   fall back?
  *   TIMEOUT, PROVIDER_UNAVAILABLE (network) yes                  yes

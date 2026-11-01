@@ -1,4 +1,4 @@
--- Token bucket for one gateway key (README section 13), run atomically inside Redis.
+-- Token bucket for one gateway key, run atomically inside Redis.
 --
 -- Reading the bucket, refilling it and taking a token happen in one step, so two
 -- requests arriving together can never both take the last token.

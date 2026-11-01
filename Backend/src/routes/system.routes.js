@@ -11,7 +11,7 @@ export const READY_CHECK_TIMEOUT_MS = 1_000;
  * @param {Record<string, () => Promise<void>>} checks
  * @param {import("pino").Logger} log
  */
-export async function runReadinessChecks(checks, log) {
+async function runReadinessChecks(checks, log) {
   const names = Object.keys(checks);
   const results = await Promise.allSettled(
     names.map((name) => withTimeout(checks[name](), READY_CHECK_TIMEOUT_MS)),

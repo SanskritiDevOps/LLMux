@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { classifyError } from "../../src/gateway/errorPolicy.js";
 import { errorFromStatus } from "../../src/providers/adapter.js";
-import { mapGeminiError } from "../../src/providers/gemini/response.js";
-import { mapOllamaError } from "../../src/providers/ollama/response.js";
+import { mapGeminiError } from "../../src/providers/gemini/errors.js";
+import { mapOllamaError } from "../../src/providers/ollama/errors.js";
 import { GatewayError } from "../../src/utils/errors.js";
 
-// Real errors, built the way the adapters and the HTTP client build them, so the table in
-// README section 14 is checked against what actually reaches the gateway.
+// Real errors, built the way the adapters and the HTTP client build them, so the policy is
+// checked against what actually reaches the gateway.
 const fromStatus = (status) => errorFromStatus("gemini", status);
 
 describe("classifyError", () => {

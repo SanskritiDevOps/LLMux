@@ -2,7 +2,7 @@ import { z } from "zod";
 import { GatewayError } from "../../utils/errors.js";
 import { generateKey } from "./keyGenerator.js";
 
-/** Redis key for a cached key lookup (README section 17: key:<hash>, 5 minutes). */
+/** Redis key for a cached key lookup. */
 export function keyCacheKey(keyHash) {
   return `key:${keyHash}`;
 }
@@ -27,7 +27,7 @@ export const UpdateKeySchema = z
 export const KeyIdParams = z.strictObject({ id: z.uuid({ error: "must be a key ID" }) });
 
 /** What the dashboard may see about a key. Never the hash, and never the key itself. */
-export function toPublicKey(row) {
+function toPublicKey(row) {
   return {
     id: row.id,
     name: row.name,

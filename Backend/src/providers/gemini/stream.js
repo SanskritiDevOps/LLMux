@@ -2,10 +2,10 @@ import {
   FINISH_REASONS,
   GeminiResponseSchema,
   answerText,
-  mapGeminiError,
   toUsage,
   unreadable,
 } from "./response.js";
+import { mapGeminiError } from "./errors.js";
 
 /**
  * One event of Gemini's streamGenerateContent?alt=sse → unified stream events.

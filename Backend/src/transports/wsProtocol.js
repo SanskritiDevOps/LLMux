@@ -4,7 +4,7 @@ import { formatIssues } from "../middleware/validate.js";
 import { GatewayError } from "../utils/errors.js";
 
 /**
- * The /v1/ws protocol (README section 19). Every message is one JSON object with a `type`.
+ * The /v1/ws protocol. Every message is one JSON object with a `type`.
  * Every incoming message is checked here before anything acts on it; unknown types and
  * unknown fields are rejected, the same as the HTTP API.
  *
@@ -16,7 +16,7 @@ import { GatewayError } from "../utils/errors.js";
 
 // Client-chosen, unique among the socket's requests in progress. Kept short and plain so
 // it is safe to log and to echo back.
-export const RequestIdSchema = z.string().regex(/^[A-Za-z0-9_.:-]{1,64}$/, {
+const RequestIdSchema = z.string().regex(/^[A-Za-z0-9_.:-]{1,64}$/, {
   error: "must be 1-64 letters, digits or _ . : -",
 });
 
@@ -39,14 +39,14 @@ const CancelMessageSchema = z.strictObject({
 
 const PingMessageSchema = z.strictObject({ type: z.literal("ping") });
 
-export const ClientMessageSchema = z.discriminatedUnion("type", [
+const ClientMessageSchema = z.discriminatedUnion("type", [
   AuthMessageSchema,
   ChatMessageSchema,
   CancelMessageSchema,
   PingMessageSchema,
 ]);
 
-export const CLIENT_MESSAGE_TYPES = ["auth", "chat", "cancel", "ping"];
+const CLIENT_MESSAGE_TYPES = ["auth", "chat", "cancel", "ping"];
 
 /**
  * Parses one incoming frame. Throws INVALID_REQUEST with a client-safe message (the same

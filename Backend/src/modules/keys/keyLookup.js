@@ -1,13 +1,13 @@
 import { keyCacheKey } from "./keys.service.js";
 
-// README section 17: cached key lookups live for 5 minutes.
+// A revoked key is evicted at once (keys.service.js), so the cache can live this long.
 export const KEY_CACHE_TTL_SECONDS = 300;
 // Unknown keys are remembered briefly, so someone retrying a wrong key does not hit
 // Postgres on every request.
 export const MISSING_KEY_CACHE_TTL_SECONDS = 60;
 // last_used_at is for the dashboard ("used 3 minutes ago"), not an audit trail, so one
 // write per key per minute is plenty.
-export const TOUCH_INTERVAL_MS = 60_000;
+const TOUCH_INTERVAL_MS = 60_000;
 
 const MISSING = JSON.stringify({ missing: true });
 

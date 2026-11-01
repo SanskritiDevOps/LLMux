@@ -2,7 +2,7 @@ import pino from "pino";
 import { env } from "../config/env.js";
 
 // Anything that can carry a credential is masked before it is written.
-export const REDACT_PATHS = [
+const REDACT_PATHS = [
   "req.headers.authorization",
   "req.headers.cookie",
   'req.headers["x-api-key"]',

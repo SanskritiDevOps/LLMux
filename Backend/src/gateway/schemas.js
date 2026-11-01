@@ -1,19 +1,19 @@
 import { z } from "zod";
 
 /**
- * The unified contract from README section 8. Every client sends and receives these
+ * The unified API contract. Every client sends and receives these
  * shapes no matter which provider answers; only adapters translate them.
  * Objects are strict: an unknown field (for example a typo like `max_tokens`) is rejected
  * instead of being silently ignored.
  */
 
 export const MAX_MESSAGES = 100;
-export const MAX_METADATA_KEYS = 20;
+const MAX_METADATA_KEYS = 20;
 
-export const ROLES = ["user", "assistant"];
+const ROLES = ["user", "assistant"];
 export const FINISH_REASONS = ["stop", "length", "content_filter", "error"];
 
-export const MessageSchema = z.strictObject({
+const MessageSchema = z.strictObject({
   role: z.enum(ROLES),
   content: z.string().min(1, { error: "must not be empty" }),
 });
@@ -40,7 +40,7 @@ export const ChatRequestSchema = z.strictObject({
   metadata: MetadataSchema.optional(),
 });
 
-export const UsageSchema = z.strictObject({
+const UsageSchema = z.strictObject({
   inputTokens: z.int().nonnegative(),
   outputTokens: z.int().nonnegative(),
   totalTokens: z.int().nonnegative(),

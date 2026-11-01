@@ -13,11 +13,11 @@ import { discardUsage, trackUsage } from "../modules/usage/usageRecorder.js";
 import { createSseWriter } from "../transports/sse.js";
 
 /**
- * Response headers that describe how a chat was answered (README section 7). They repeat
+ * Response headers that describe how a chat was answered. They repeat
  * what the body says, so a client, proxy or curl -i can see it without parsing JSON, and
  * so a stream says who is answering before the first token.
  */
-export const LLMUX_HEADERS = Object.freeze({
+const LLMUX_HEADERS = Object.freeze({
   provider: "X-LLMux-Provider",
   providerModel: "X-LLMux-Provider-Model",
   cache: "X-LLMux-Cache",

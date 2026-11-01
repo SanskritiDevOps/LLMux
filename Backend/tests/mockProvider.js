@@ -1,7 +1,7 @@
 import express from "express";
 
 /**
- * A fake LLM provider for tests: no real provider is ever called (README section 27).
+ * A fake LLM provider for tests, so no test ever calls a real provider.
  * It speaks the Gemini and Ollama wire formats on one port, and each provider can be told
  * how to behave:
  *

@@ -4,7 +4,8 @@ import { ChatRequestSchema } from "../../src/gateway/schemas.js";
 import { providerRegistry } from "../../src/providers/index.js";
 import { ollamaAdapter } from "../../src/providers/ollama/index.js";
 import { OLLAMA_DEFAULT_BASE_URL, buildOllamaRequest } from "../../src/providers/ollama/request.js";
-import { mapOllamaError, parseOllamaResponse } from "../../src/providers/ollama/response.js";
+import { mapOllamaError } from "../../src/providers/ollama/errors.js";
+import { parseOllamaResponse } from "../../src/providers/ollama/response.js";
 import { GatewayError } from "../../src/utils/errors.js";
 
 // Recorded from a real Ollama 0.40.6 running llama3.2:1b on 2026-10-21.

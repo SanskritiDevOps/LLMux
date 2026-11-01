@@ -1,5 +1,5 @@
 /**
- * Measures what LLMux itself costs (README section 28), against a mock provider that
+ * Measures what LLMux itself costs, against a mock provider that
  * answers instantly, so the time measured is the gateway's own.
  *
  *   npm run bench          (needs Docker: Postgres and Redis)

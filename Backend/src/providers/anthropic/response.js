@@ -16,7 +16,7 @@ import { GatewayError } from "../../utils/errors.js";
 
 const PROVIDER = "anthropic";
 
-const UsageFields = z.object({
+export const AnthropicUsageSchema = z.object({
   input_tokens: z.int().nonnegative().optional(),
   cache_creation_input_tokens: z.int().nonnegative().nullable().optional(),
   cache_read_input_tokens: z.int().nonnegative().nullable().optional(),
@@ -25,12 +25,11 @@ const UsageFields = z.object({
 
 // Only the fields LLMux reads; everything else Anthropic sends is ignored. stream.js reads
 // the same usage fields from message_start and message_delta.
-export const AnthropicResponseSchema = z.object({
+const AnthropicResponseSchema = z.object({
   content: z.array(z.object({ type: z.string(), text: z.string().optional() })),
   stop_reason: z.string().nullable().optional(),
-  usage: UsageFields.optional(),
+  usage: AnthropicUsageSchema.optional(),
 });
-export const AnthropicUsageSchema = UsageFields;
 
 // Anthropic's stop_reason → the four unified reasons. tool_use and pause_turn can't be
 // shown as an answer by the unified format, so anything unlisted becomes "error".

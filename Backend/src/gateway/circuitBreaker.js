@@ -2,7 +2,7 @@ import { logger as defaultLogger } from "../utils/logger.js";
 
 /**
  * One circuit breaker per provider, with its state in Redis so every LLMux instance sees
- * the same thing (README section 14):
+ * the same thing:
  *
  *   CLOSED ──(5 failures in 30 s)──► OPEN ──(after 30 s)──► HALF-OPEN
  *      ▲                                                       │
@@ -26,14 +26,14 @@ import { logger as defaultLogger } from "../utils/logger.js";
  * requests faster, so it must never be the reason a request fails.
  */
 
-export const FAILURE_THRESHOLD = 5;
+const FAILURE_THRESHOLD = 5;
 export const FAILURE_WINDOW_MS = 30_000;
 export const OPEN_MS = 30_000;
 // Long enough for one full request (the 60 s deadline); if the instance running the test
 // request dies, the next request after this becomes the test request.
-export const PROBE_MS = 60_000;
+const PROBE_MS = 60_000;
 // A circuit nobody has tried for an hour is simply forgotten (closed).
-export const TRIPPED_MS = 60 * 60_000;
+const TRIPPED_MS = 60 * 60_000;
 
 export const STATES = Object.freeze({ CLOSED: "closed", OPEN: "open", HALF_OPEN: "half-open" });
 
@@ -150,7 +150,7 @@ export function createCircuitBreaker({
       );
     },
 
-    /** For the dashboard's provider health page (Day 13). */
+    /** For the dashboard's provider health page. */
     async state(provider) {
       const keys = keysFor(provider);
       return safely(

@@ -1,7 +1,7 @@
 # Render Blueprint for the LLMux backend, its Postgres and its Redis.
 # Render dashboard → New → Blueprint → pick this repository. Values marked sync: false
 # are asked for once, in the Render dashboard; they are never stored in the repository.
-# Steps and checks: docs/Setup-and-Initialisation.md, section 9.
+# Steps: README.md, "Deployment".
 
 services:
   - type: web

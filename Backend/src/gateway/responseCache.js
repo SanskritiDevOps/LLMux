@@ -3,7 +3,7 @@ import { logger as defaultLogger } from "../utils/logger.js";
 import { cacheKey, isCacheable } from "./cacheKey.js";
 
 /**
- * The response cache (README section 12): an identical, deterministic request is answered
+ * The response cache: an identical, deterministic request is answered
  * from Redis instead of calling a provider again.
  *
  *   - only JSON chats: streams are always served live (replaying them is a P1 stretch)

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { logger as defaultLogger } from "../../utils/logger.js";
 
 /**
- * Token buckets in Redis (README section 13): each bucket holds up to `limit` tokens and
+ * Token buckets in Redis: each bucket holds up to `limit` tokens and
  * refills at `limit` per minute; each request takes one. Bursts up to the limit are
  * allowed, while the long-term rate stays fixed.
  *

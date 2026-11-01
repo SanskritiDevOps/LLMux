@@ -18,7 +18,6 @@ export function fakeKeys() {
         keyPrefix,
         keyHash,
         rateLimitPerMin,
-        monthlyBudgetMicroUsd: null,
         lastUsedAt: null,
         revokedAt: null,
         createdAt: new Date(Date.now() + rows.length),

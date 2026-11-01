@@ -8,7 +8,7 @@ import { GatewayError } from "../utils/errors.js";
  *                     the key's bucket: its rateLimitPerMin, or DEFAULT_RATE_LIMIT_PER_MIN
  *   per IP on login   POST /api/auth/login, to slow down password guessing
  *
- * Responses say where the client stands (README section 13):
+ * Responses say where the client stands:
  *
  *   X-RateLimit-Limit: 60
  *   X-RateLimit-Remaining: 41
@@ -34,7 +34,7 @@ export const keyBucket = (apiKeyId) => `rl:key:${apiKeyId}`;
 export const limitFor = (apiKey) => apiKey.rateLimitPerMin ?? env.DEFAULT_RATE_LIMIT_PER_MIN;
 
 /** Whole seconds, never 0: "Retry-After: 0" would invite an immediate retry that fails. */
-export const retryAfterSeconds = (result) => Math.max(1, Math.ceil(result.retryAfterMs / 1000));
+const retryAfterSeconds = (result) => Math.max(1, Math.ceil(result.retryAfterMs / 1000));
 
 /** The 429 for a refused request: RATE_LIMITED, retryable, saying when to try again. */
 export function rateLimitError(result) {

@@ -6,15 +6,15 @@ import { z } from "zod";
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-export const DEFAULT_RANGE_DAYS = 7;
-export const MAX_RANGE_DAYS = 90;
-export const LOGS_DEFAULT_LIMIT = 50;
-export const LOGS_MAX_LIMIT = 200;
+const DEFAULT_RANGE_DAYS = 7;
+const MAX_RANGE_DAYS = 90;
+const LOGS_DEFAULT_LIMIT = 50;
+const LOGS_MAX_LIMIT = 200;
 
 export const METRICS = ["requests", "errors", "cached", "tokens", "cost", "latency"];
 export const INTERVALS = { hour: 60 * 60 * 1000, day: DAY_MS };
-export const MAX_BUCKETS = 1000;
-export const BREAKDOWN_BY = ["model", "provider", "key"];
+const MAX_BUCKETS = 1000;
+const BREAKDOWN_BY = ["model", "provider", "key"];
 export const STATUSES = ["success", "error", "cancelled"];
 
 const isoDate = z.iso.datetime({ offset: true, error: "must be an ISO 8601 date and time" });

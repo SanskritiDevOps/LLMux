@@ -6,7 +6,7 @@ afterEach(() => {
 });
 
 describe("backoffDelay", () => {
-  it("is about 250 ms, then about 500 ms (README section 14)", () => {
+  it("is about 250 ms, then about 500 ms", () => {
     const middle = () => 0.5;
 
     expect(backoffDelay(1, { random: middle })).toBe(250);

@@ -3,7 +3,7 @@ import { env } from "../../config/env.js";
 
 /**
  * Passwords are short and chosen by people, so they are hashed with bcrypt, which is slow
- * on purpose. (Gateway keys are long random strings and use SHA-256 instead; see Day 6.)
+ * on purpose. (Gateway keys use SHA-256 instead: see keyGenerator.js.)
  *
  * Cost 12 takes about 0.25 s per hash on a laptop: unnoticeable for one login, expensive
  * for anyone guessing at scale. Tests use cost 4 so the suite stays fast; the algorithm

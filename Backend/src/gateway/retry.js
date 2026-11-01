@@ -1,11 +1,6 @@
-/**
- * Timing for retries (README section 14): "wait about 250 ms, then 500 ms, each with a
- * random offset so many clients don't retry at the same instant".
- */
-
-export const BASE_DELAY_MS = 250;
+const BASE_DELAY_MS = 250;
 // A ceiling for the exponential growth, if MAX_RETRIES is ever raised well above 2.
-export const MAX_DELAY_MS = 4_000;
+const MAX_DELAY_MS = 4_000;
 
 /**
  * The wait before retry number `retry` (1 for the first retry): BASE × 2^(retry − 1),

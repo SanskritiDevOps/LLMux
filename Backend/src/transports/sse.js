@@ -1,6 +1,6 @@
 /**
  * Writes unified stream events to an HTTP response as Server-Sent Events.
- * Transport only: it never knows which provider produced the events (README section 11).
+ * Transport only: it never knows which provider produced the events.
  *
  *   event: delta
  *   data: {"text":"Morning: "}

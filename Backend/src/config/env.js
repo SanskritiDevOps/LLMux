@@ -12,7 +12,7 @@ const booleanString = z
 // Provider keys are optional: a provider with no key is disabled at startup.
 const optionalSecret = z.string().min(1).optional();
 
-export const envSchema = z
+const envSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     PORT: port.default(5000),

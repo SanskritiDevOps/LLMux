@@ -95,15 +95,8 @@ export function defineAdapter(adapter) {
  * adapters. Adapters call it after handling their own quirks. Messages are generic on
  * purpose: raw provider bodies can contain internal details and are only logged.
  *
- * Retry and fallback follow README section 14:
- *   400          INVALID_REQUEST        no retry, no fallback (the next provider would fail too)
- *   401/402/403  PROVIDER_ERROR         no retry, fallback (our key or account is the problem)
- *   404          PROVIDER_ERROR         no retry, fallback (model missing at this provider)
- *   408/504      TIMEOUT                retry
- *   429          PROVIDER_RATE_LIMITED  retry
- *   503          PROVIDER_UNAVAILABLE   retry
- *   other 5xx    PROVIDER_ERROR         retry
- *   other 4xx    PROVIDER_ERROR         no retry, fallback
+ * `retryable` says whether the same call might succeed later; whether the next provider
+ * is tried is decided in gateway/errorPolicy.js.
  *
  * The provider's own status is kept as `providerStatus`, so the gateway can tell, for
  * example, a rejected API key (401/403, worth an alert) from other provider errors.

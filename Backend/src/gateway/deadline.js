@@ -2,8 +2,7 @@ import { GatewayError } from "../utils/errors.js";
 
 /**
  * One request's overall time budget across every attempt: retries, their waits and
- * fallbacks together (REQUEST_DEADLINE_MS, 60 s by default). README section 14: "an
- * overall request deadline caps total time across retries and fallbacks".
+ * fallbacks together (REQUEST_DEADLINE_MS, 60 s by default).
  *
  * Each attempt still has its own limit (REQUEST_TIMEOUT_MS); timeoutFor() lowers it to
  * whatever is left, so the last attempt can't run past the deadline.

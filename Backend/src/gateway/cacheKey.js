@@ -2,8 +2,7 @@ import { createHash } from "node:crypto";
 import { env } from "../config/env.js";
 
 /**
- * Which requests may be answered from the cache, and the key they're stored under
- * (README section 12):
+ * Which requests may be answered from the cache, and the key they're stored under:
  *
  *   cache:v1:<sha256 of the normalized { model, system, messages, temperature, maxTokens }>
  *
@@ -17,7 +16,7 @@ import { env } from "../config/env.js";
 
 // Bump to "v2" if the stored format changes: every old entry is ignored at once, and
 // expires on its own.
-export const CACHE_KEY_VERSION = "v1";
+const CACHE_KEY_VERSION = "v1";
 
 /**
  * @param {import("../providers/adapter.js").UnifiedRequest} request  already validated

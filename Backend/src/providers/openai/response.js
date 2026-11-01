@@ -18,7 +18,7 @@ const PROVIDER = "openai";
 
 // Only the fields LLMux reads; everything else OpenAI sends is ignored. Each streamed
 // chunk has a similar shape, so stream.js shares the finish reasons and usage helper.
-export const OpenAIResponseSchema = z.object({
+const OpenAIResponseSchema = z.object({
   choices: z
     .array(
       z.object({

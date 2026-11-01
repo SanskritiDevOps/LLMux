@@ -256,7 +256,7 @@ function toPublicLog(row) {
 }
 
 /** The cursor is opaque to clients: base64url of the last row's time and id. */
-export function encodeCursor(row) {
+function encodeCursor(row) {
   return Buffer.from(JSON.stringify([row.createdAt.toISOString(), row.id])).toString("base64url");
 }
 

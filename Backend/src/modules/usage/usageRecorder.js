@@ -10,7 +10,7 @@
  * `finish()` once with the outcome. The row goes to the usage writer, which batches it;
  * nothing here waits for the database.
  *
- * Message text is never stored (README section 17): only counts, cost and timings.
+ * Message text is never stored: only counts, cost and timings.
  */
 
 export const STATUSES = Object.freeze(["success", "error", "cancelled"]);

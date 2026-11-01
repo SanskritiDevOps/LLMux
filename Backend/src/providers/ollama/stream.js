@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { GatewayError } from "../../utils/errors.js";
-import { FINISH_REASONS, mapOllamaError } from "./response.js";
+import { mapOllamaError } from "./errors.js";
+import { FINISH_REASONS } from "./response.js";
 
 /**
  * One line of Ollama's /api/chat stream (newline-delimited JSON) → unified stream events.

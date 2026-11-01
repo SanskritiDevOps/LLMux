@@ -2,7 +2,7 @@ import { Router } from "express";
 import { PROVIDERS, modelConfig } from "../../config/models.js";
 import { requireSession } from "../../middleware/jwtAuth.js";
 
-export const HEALTH_WINDOW_MINUTES = 15;
+const HEALTH_WINDOW_MINUTES = 15;
 
 /**
  * Provider health for the dashboard, mounted at /api/providers.
