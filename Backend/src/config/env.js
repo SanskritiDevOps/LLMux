@@ -16,7 +16,12 @@ const envSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     PORT: port.default(5000),
-    DASHBOARD_URL: z.url().default("http://localhost:5173"),
+    // Reduced to its origin: CORS compares it with the browser's Origin header exactly, so
+    // a pasted "https://app.vercel.app/" would otherwise block every dashboard request.
+    DASHBOARD_URL: z
+      .url()
+      .transform((url) => new URL(url).origin)
+      .default("http://localhost:5173"),
 
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/, error: "must be a postgresql:// URL" }),
     REDIS_URL: z.url({ protocol: /^rediss?$/, error: "must be a redis:// or rediss:// URL" }),

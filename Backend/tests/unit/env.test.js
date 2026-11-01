@@ -29,6 +29,12 @@ describe("parseEnv", () => {
     expect(() => parseEnv({ ...required, TRUST_PROXY: "-1" })).toThrow(/TRUST_PROXY/);
   });
 
+  it("reduces DASHBOARD_URL to its origin, so a trailing slash can't break CORS", () => {
+    const env = parseEnv({ ...required, DASHBOARD_URL: "https://llmux.vercel.app/" });
+
+    expect(env.DASHBOARD_URL).toBe("https://llmux.vercel.app");
+  });
+
   it("coerces numbers and parses booleans strictly", () => {
     const env = parseEnv({ ...required, PORT: "8080", CACHE_ONLY_DETERMINISTIC: "false" });
 

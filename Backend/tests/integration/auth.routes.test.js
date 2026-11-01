@@ -1,6 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/app.js";
+import { env } from "../../src/config/env.js";
 import { SESSION_COOKIE } from "../../src/modules/auth/tokens.js";
 import { captureLogs } from "../helpers/captureLogs.js";
 import { fakeUsers } from "../helpers/fakeUsers.js";
@@ -142,11 +143,11 @@ describe("cross-site protection and CORS", () => {
   it("lets the dashboard origin send credentials", async () => {
     const res = await request(app)
       .post("/api/auth/register")
-      .set("Origin", "http://localhost:5173")
+      .set("Origin", env.DASHBOARD_URL)
       .send(asha);
 
     expect(res.status).toBe(201);
-    expect(res.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+    expect(res.headers["access-control-allow-origin"]).toBe(env.DASHBOARD_URL);
     expect(res.headers["access-control-allow-credentials"]).toBe("true");
   });
 });
