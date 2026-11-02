@@ -178,12 +178,18 @@ describe("chat retries", () => {
   });
 
   it.each([
-    ["a timeout", new GatewayError("TIMEOUT", "gemini did not respond", { provider: "gemini" })],
+    // A timeout is retried only on the last target; otherwise see the next test.
+    [
+      "a timeout",
+      GEMINI_ONLY,
+      new GatewayError("TIMEOUT", "gemini did not respond", { provider: "gemini" }),
+    ],
     [
       "an unreachable provider",
+      "fast",
       new GatewayError("PROVIDER_UNAVAILABLE", "Could not reach gemini", { provider: "gemini" }),
     ],
-  ])("retries %s from the HTTP client too", async (_label, error) => {
+  ])("retries %s from the HTTP client too", async (_label, model, error) => {
     let calls = 0;
     const { chat } = setup({
       send: async () => {
@@ -193,9 +199,27 @@ describe("chat retries", () => {
       },
     });
 
-    const { meta } = await chat({ model: "fast" });
+    const { meta } = await chat({ model });
 
     expect(meta.attempts).toBe(2);
+  });
+
+  it("falls back after a timeout instead of retrying, so the deadline is left for the next provider", async () => {
+    const timeout = new GatewayError("TIMEOUT", "gemini did not respond", { provider: "gemini" });
+    const providers = [];
+    const { chat } = setup({
+      send: async (_req, opts) => {
+        providers.push(opts.provider);
+        if (opts.provider === "gemini") throw timeout;
+        return ollamaOk;
+      },
+    });
+
+    const { response, meta } = await chat({ model: "fast" });
+
+    expect(providers).toEqual(["gemini", "ollama"]);
+    expect(meta.attempts).toBe(2);
+    expect(response).toMatchObject({ provider: "ollama", fallbackUsed: true });
   });
 
   it("falls back at once, without retrying, when the provider rejects LLMux's key", async () => {

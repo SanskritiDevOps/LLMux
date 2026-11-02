@@ -4,7 +4,9 @@ import { GatewayError } from "../utils/errors.js";
  * What to do after one attempt fails:
  *
  *   error                                   retry same target?   fall back?
- *   TIMEOUT, PROVIDER_UNAVAILABLE (network) yes                  yes
+ *   TIMEOUT                                 only on the last     yes
+ *                                           target (gateway)
+ *   PROVIDER_UNAVAILABLE (network)          yes                  yes
  *   PROVIDER_RATE_LIMITED (429)             yes (Retry-After)    yes
  *   PROVIDER_ERROR, 5xx                     yes                  yes
  *   PROVIDER_ERROR, 401/402/403/404         no                   yes (401/403 also alert)

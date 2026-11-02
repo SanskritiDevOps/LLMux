@@ -142,7 +142,8 @@ export function createGateway({
   /**
    * Runs `attempt` down the alias's chain until one succeeds:
    *
-   *   - each target gets up to 1 + maxRetries attempts, while its errors are retryable
+   *   - each target gets up to 1 + maxRetries attempts, while its errors are retryable;
+   *     after a timeout the next target is asked instead, if there is one
    *   - between retries: backoffDelay() (about 250 ms, then 500 ms), or the provider's
    *     Retry-After if that is longer
    *   - a wait that would pass the deadline, or that is longer than
@@ -254,7 +255,9 @@ export function createGateway({
             );
           }
           if (!decision.fallback) throw err;
-          if (!decision.retry) break;
+          // A timeout has already used a whole attempt's time; another one would likely
+          // use the rest of the deadline before the next provider is asked.
+          if (!decision.retry || (err.code === "TIMEOUT" && hasNext)) break;
         }
       }
     }
