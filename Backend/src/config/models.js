@@ -7,11 +7,10 @@ export const PROVIDERS = ["gemini", "ollama", "openai", "anthropic", "groq"];
  *
  * Prices are micro-dollars (1 USD = 1,000,000) per 1 million tokens, as integers, so cost
  * math never touches floating point. Copied from the official pricing pages on 2026-10-19:
- *   https://ai.google.dev/gemini-api/docs/pricing (page dated 2026-10-16)
+ *   https://ai.google.dev/gemini-api/docs/pricing (page dated 2026-10-16; 3.6 Flash 2026-11-02)
  *   https://developers.openai.com/api/docs/pricing
  *   https://platform.claude.com/docs/en/about-claude/pricing
  *   https://console.groq.com/docs/models (2026-11-01)
- * Tiered models are priced at their base tier (Gemini 2.5 Pro: prompts up to 200k tokens).
  *
  * maxOutputTokens is LLMux's own cap per request, not the model's hard limit: it bounds
  * what one call can cost. Requests asking for more are clamped to it.
@@ -22,9 +21,11 @@ const catalog = {
     outputPerMTok: 2_500_000, // $2.50
     maxOutputTokens: 8192,
   },
-  "gemini:gemini-2.5-pro": {
-    inputPerMTok: 1_250_000, // $1.25
-    outputPerMTok: 10_000_000, // $10.00
+  // gemini-2.5-pro is closed to new users and the Pro models have no free tier, so `smart`
+  // uses the larger Flash. Its price doubles on 2027-01-01 ($1.50 / $7.50).
+  "gemini:gemini-3.6-flash": {
+    inputPerMTok: 750_000, // $0.75
+    outputPerMTok: 3_750_000, // $3.75
     maxOutputTokens: 8192,
   },
   "openai:gpt-6.1-sol": {
@@ -71,7 +72,7 @@ const aliases = {
     targets: [
       "anthropic:claude-sonnet-5-5",
       "openai:gpt-6.1-sol",
-      "gemini:gemini-2.5-pro",
+      "gemini:gemini-3.6-flash",
       "groq:openai/gpt-oss-120b",
     ],
     defaultMaxTokens: 2048,

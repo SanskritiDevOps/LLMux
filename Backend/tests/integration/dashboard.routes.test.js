@@ -232,7 +232,7 @@ describe("GET /api/providers/health", () => {
     expect(res.body.providers[0]).toEqual({
       provider: "gemini",
       configured: true,
-      models: ["gemini-3.5-flash-lite", "gemini-2.5-pro"],
+      models: ["gemini-3.5-flash-lite", "gemini-3.6-flash"],
       circuit: { state: "closed", recentFailures: 0 },
       recent: { requests: 8, errors: 2, errorRate: 0.25, p50LatencyMs: 420 },
     });

@@ -192,7 +192,7 @@ Clients use aliases; the server decides what's behind them ([`src/config/models.
 | Alias | Targets, in fallback order |
 |---|---|
 | `fast` | `gemini:gemini-3.5-flash-lite` → `groq:openai/gpt-oss-20b` → `ollama:llama3.2:1b` |
-| `smart` | `anthropic:claude-sonnet-5-5` → `openai:gpt-6.1-sol` → `gemini:gemini-2.5-pro` → `groq:openai/gpt-oss-120b` |
+| `smart` | `anthropic:claude-sonnet-5-5` → `openai:gpt-6.1-sol` → `gemini:gemini-3.6-flash` → `groq:openai/gpt-oss-120b` |
 | `local` | `ollama:llama3.2:1b` |
 
 Providers without a key are left out of every chain. Ollama runs only where its server is, so a hosted deployment uses Gemini and Groq: `fast` then answers from Gemini and falls back to Groq. A direct `provider:model` name, such as `ollama:llama3.2:1b`, calls exactly that model with no fallback. Prices live in the same file, in micro-dollars per million tokens, and the whole file is validated at startup.
