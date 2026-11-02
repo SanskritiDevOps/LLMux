@@ -268,7 +268,7 @@ The throughput numbers describe this laptop more than LLMux: even `/health`, whi
 
 ## Deployment
 
-[`render.yaml`](render.yaml) describes the backend, its Postgres and its Redis as a Render Blueprint: the build runs `prisma migrate deploy`, the health check is `/health`, and `TRUST_PROXY=2` lets the per-IP login limit see real client addresses behind Render's two proxies (Cloudflare, then Render's own). The dashboard deploys to Vercel from `Frontend/` ([`vercel.json`](Frontend/vercel.json)), with `VITE_API_URL` set to the backend's URL. On the backend, set `DASHBOARD_URL` to the dashboard's exact URL (CORS allows only that origin) and at least one provider key.
+[`render.yaml`](render.yaml) describes the backend, its Postgres and its Redis as a Render Blueprint: the build runs `prisma migrate deploy`, the health check is `/health`, and `CLIENT_IP_HEADER=cf-connecting-ip` lets the per-IP login limit see real client addresses behind Cloudflare and Render's proxies. The dashboard deploys to Vercel from `Frontend/` ([`vercel.json`](Frontend/vercel.json)), with `VITE_API_URL` set to the backend's URL. On the backend, set `DASHBOARD_URL` to the dashboard's exact URL (CORS allows only that origin) and at least one provider key.
 
 ## Limitations
 

@@ -35,6 +35,13 @@ describe("parseEnv", () => {
     expect(env.DASHBOARD_URL).toBe("https://llmux.vercel.app");
   });
 
+  it("lower-cases CLIENT_IP_HEADER and rejects anything that isn't a header name", () => {
+    expect(parseEnv({ ...required, CLIENT_IP_HEADER: "CF-Connecting-IP" }).CLIENT_IP_HEADER).toBe(
+      "cf-connecting-ip",
+    );
+    expect(() => parseEnv({ ...required, CLIENT_IP_HEADER: "x: y" })).toThrow(/CLIENT_IP_HEADER/);
+  });
+
   it("coerces numbers and parses booleans strictly", () => {
     const env = parseEnv({ ...required, PORT: "8080", CACHE_ONLY_DETERMINISTIC: "false" });
 

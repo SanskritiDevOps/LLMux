@@ -50,13 +50,39 @@ describe("trust proxy", () => {
 
     expect(res.body.ip).toBe("203.0.113.7");
   });
+});
 
-  // Render: the client sends a forged address, Cloudflare appends the client's real one,
-  // Render's proxy appends Cloudflare's, and the socket is Render's proxy.
-  it("finds the client behind two proxies, past a forged address and Cloudflare's", async () => {
-    const res = await request(ipApp(2))
+describe("client address for per-IP limits", () => {
+  const clientIpApp = (clientIpHeader) =>
+    createApp({
+      trustProxy: 1,
+      clientIpHeader,
+      extraRoutes: (a) => a.get("/test/ip", (req, res) => res.json({ ip: req.clientIp })),
+    });
+
+  // Render: Cloudflare sets CF-Connecting-IP; X-Forwarded-For has a varying number of hops.
+  it("takes the configured edge header over X-Forwarded-For", async () => {
+    const res = await request(clientIpApp("cf-connecting-ip"))
       .get("/test/ip")
-      .set("X-Forwarded-For", "198.51.100.1, 203.0.113.7, 104.16.0.1");
+      .set("CF-Connecting-IP", "203.0.113.7")
+      .set("X-Forwarded-For", "198.51.100.1, 104.16.0.1");
+
+    expect(res.body.ip).toBe("203.0.113.7");
+  });
+
+  it("falls back to req.ip when the header is missing", async () => {
+    const res = await request(clientIpApp("cf-connecting-ip"))
+      .get("/test/ip")
+      .set("X-Forwarded-For", "203.0.113.7");
+
+    expect(res.body.ip).toBe("203.0.113.7");
+  });
+
+  it("ignores the header when none is configured, so clients can't pick their address", async () => {
+    const res = await request(clientIpApp(undefined))
+      .get("/test/ip")
+      .set("CF-Connecting-IP", "198.51.100.1")
+      .set("X-Forwarded-For", "203.0.113.7");
 
     expect(res.body.ip).toBe("203.0.113.7");
   });

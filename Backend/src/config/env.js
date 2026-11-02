@@ -51,9 +51,17 @@ const envSchema = z
     LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
       .default("info"),
-    // How many proxies sit in front of the server (2 on Render: Cloudflare, then Render's
-    // own), so req.ip is the client's address rather than a proxy's. 0 locally.
+    // How many proxies sit in front of the server, so req.ip is the client's address rather
+    // than a proxy's. 0 locally.
     TRUST_PROXY: nonNegativeInt.max(5).default(0),
+    // A header the edge proxy sets to the client's address, replacing any value the client
+    // sent: cf-connecting-ip behind Cloudflare (Render). Overrides TRUST_PROXY for per-IP
+    // limits. Only safe when every request comes through that proxy.
+    CLIENT_IP_HEADER: z
+      .string()
+      .regex(/^[A-Za-z0-9-]+$/, { error: "must be a header name" })
+      .transform((name) => name.toLowerCase())
+      .optional(),
   })
   .refine((env) => env.REQUEST_TIMEOUT_MS <= env.REQUEST_DEADLINE_MS, {
     path: ["REQUEST_TIMEOUT_MS"],

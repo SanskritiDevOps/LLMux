@@ -51,6 +51,8 @@ const defaultChecks = { database: checkDatabase, redis: checkRedis };
  *   circuit breaker, for provider health; server.js passes the one its gateway uses
  * @param {Set<string>} [deps.enabledProviders] providers with a key, for provider health
  * @param {number} [deps.trustProxy] proxies in front of the server (TRUST_PROXY by default)
+ * @param {string} [deps.clientIpHeader] a header the edge proxy sets to the client's address
+ *   (CLIENT_IP_HEADER by default)
  * @param {(app: import("express").Express) => void} [deps.extraRoutes] tests register
  *   throwaway routes here so they sit before the 404 and error handlers
  */
@@ -67,6 +69,7 @@ export function createApp({
   breaker = noCircuitBreaker,
   enabledProviders = getEnabledProviders(),
   trustProxy = env.TRUST_PROXY,
+  clientIpHeader = env.CLIENT_IP_HEADER,
   extraRoutes,
 } = {}) {
   const app = express();
@@ -74,6 +77,13 @@ export function createApp({
   // that many hops makes req.ip the client's (from X-Forwarded-For), so the per-IP login
   // limit isn't one bucket shared by everyone; trusting more would let clients spoof it.
   app.set("trust proxy", trustProxy);
+  // Where the proxy chain isn't a fixed length (Render: Cloudflare, then a varying number of
+  // its own hops), no hop count is right; the edge proxy's own header is. req.clientIp is
+  // what per-IP limits use.
+  app.use((req, _res, next) => {
+    req.clientIp = (clientIpHeader && req.get(clientIpHeader)?.trim()) || req.ip;
+    next();
+  });
 
   // Request ID first, so every later log line and error can be traced.
   app.use(requestId());

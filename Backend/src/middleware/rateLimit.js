@@ -78,19 +78,22 @@ export function rateLimitByKey({ limiter }) {
 /**
  * One token per request from a bucket per client IP, for routes with no key to limit by.
  *
- * `req.ip` is the direct peer. Behind proxies, Express must be told how many to trust
- * (TRUST_PROXY), or req.ip is a proxy's address: shared by everyone, or, behind
- * Cloudflare, a different one per request.
+ * The address is req.clientIp (set in app.js): CLIENT_IP_HEADER when configured, otherwise
+ * req.ip, which behind proxies needs TRUST_PROXY, or it is a proxy's address: shared by
+ * everyone, or, behind Cloudflare, a different one per request.
  *
  * @param {{ limiter: ReturnType<typeof import("../modules/ratelimit/tokenBucket.js").createTokenBucket>,
  *   name: string, limit: number }} options  name keeps different routes' buckets apart
  */
 export function rateLimitByIp({ limiter, name, limit }) {
   return async (req, res, next) => {
-    const result = await limiter.take(`rl:${name}:${req.ip}`, { limit, log: req.log });
+    const result = await limiter.take(`rl:${name}:${req.clientIp}`, { limit, log: req.log });
     setHeaders(res, result);
     if (!result.allowed) {
-      req.log?.warn({ ip: req.ip, route: name, limit }, "Rate limit reached for this address");
+      req.log?.warn(
+        { ip: req.clientIp, route: name, limit },
+        "Rate limit reached for this address",
+      );
       return next(rateLimitError(result));
     }
     next();

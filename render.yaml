@@ -20,10 +20,14 @@ services:
         value: production
       - key: NODE_VERSION
         value: "22"
-      # Two proxies sit in front of the app: Cloudflare, then Render's own. With 1, req.ip was
-      # Cloudflare's address, which changes per request, so the login limit never added up.
+      # Render puts at least one proxy in front of the app.
       - key: TRUST_PROXY
-        value: "2"
+        value: "1"
+      # Cloudflare sits in front of Render and the number of hops after it varies, so no
+      # TRUST_PROXY value finds the client. Cloudflare's own header does; every request to
+      # onrender.com comes through Cloudflare, which overwrites a value the client sends.
+      - key: CLIENT_IP_HEADER
+        value: cf-connecting-ip
       - key: LOG_LEVEL
         value: info
       - key: DATABASE_URL
