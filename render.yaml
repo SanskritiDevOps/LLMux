@@ -20,9 +20,10 @@ services:
         value: production
       - key: NODE_VERSION
         value: "22"
-      # Render puts one proxy in front of the app.
+      # Two proxies sit in front of the app: Cloudflare, then Render's own. With 1, req.ip was
+      # Cloudflare's address, which changes per request, so the login limit never added up.
       - key: TRUST_PROXY
-        value: "1"
+        value: "2"
       - key: LOG_LEVEL
         value: info
       - key: DATABASE_URL

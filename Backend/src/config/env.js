@@ -51,8 +51,8 @@ const envSchema = z
     LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
       .default("info"),
-    // How many proxies sit in front of the server (Render, Fly.io and Railway add one), so
-    // req.ip is the client's address rather than the proxy's. 0 locally.
+    // How many proxies sit in front of the server (2 on Render: Cloudflare, then Render's
+    // own), so req.ip is the client's address rather than a proxy's. 0 locally.
     TRUST_PROXY: nonNegativeInt.max(5).default(0),
   })
   .refine((env) => env.REQUEST_TIMEOUT_MS <= env.REQUEST_DEADLINE_MS, {

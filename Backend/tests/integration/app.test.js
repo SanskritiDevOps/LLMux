@@ -50,6 +50,16 @@ describe("trust proxy", () => {
 
     expect(res.body.ip).toBe("203.0.113.7");
   });
+
+  // Render: the client sends a forged address, Cloudflare appends the client's real one,
+  // Render's proxy appends Cloudflare's, and the socket is Render's proxy.
+  it("finds the client behind two proxies, past a forged address and Cloudflare's", async () => {
+    const res = await request(ipApp(2))
+      .get("/test/ip")
+      .set("X-Forwarded-For", "198.51.100.1, 203.0.113.7, 104.16.0.1");
+
+    expect(res.body.ip).toBe("203.0.113.7");
+  });
 });
 
 describe("CORS", () => {

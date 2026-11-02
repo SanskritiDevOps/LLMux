@@ -78,8 +78,9 @@ export function rateLimitByKey({ limiter }) {
 /**
  * One token per request from a bucket per client IP, for routes with no key to limit by.
  *
- * `req.ip` is the direct peer. Behind a proxy (Render, Fly.io), Express must be told to
- * trust it (app.set("trust proxy", 1)), or every client shares the proxy's address.
+ * `req.ip` is the direct peer. Behind proxies, Express must be told how many to trust
+ * (TRUST_PROXY), or req.ip is a proxy's address: shared by everyone, or, behind
+ * Cloudflare, a different one per request.
  *
  * @param {{ limiter: ReturnType<typeof import("../modules/ratelimit/tokenBucket.js").createTokenBucket>,
  *   name: string, limit: number }} options  name keeps different routes' buckets apart
